@@ -215,6 +215,12 @@ Con `SUPABASE_ENABLED=true`, il controller dry-run prova a scrivere in:
 
 in modalita best-effort (se Supabase fallisce, il loop continua).
 
+Verifica connessione Supabase:
+
+```powershell
+python -m src.check_supabase_connection --insert-test-sample
+```
+
 ## Sicurezza e limiti Wave 1
 
 - Tesla Fleet API non ancora attiva.
@@ -249,7 +255,8 @@ esyy-TeslaConnector/
 |  |- solar_logic.py
 |  |- controller_dry_run.py
 |  |- controller_loop_dry_run.py
-|  `- supabase_sink.py
+|  |- supabase_sink.py
+|  `- check_supabase_connection.py
 |- tests/
 |  |- __init__.py
 |  |- test_solar_logic.py
@@ -257,7 +264,8 @@ esyy-TeslaConnector/
 |  |- test_afore_reader.py
 |  |- test_tesla_client.py
 |  |- test_supabase_sink.py
-|  `- test_controller_loop_supabase.py
+|  |- test_controller_loop_supabase.py
+|  `- test_check_supabase_connection.py
 `- data/
    `- .gitkeep
 ```

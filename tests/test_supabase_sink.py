@@ -17,8 +17,9 @@ class FakeSession:
         method: str,
         url: str,
         headers: dict,
-        json: dict,
-        timeout: float,
+        json: dict | None = None,
+        params: dict | None = None,
+        timeout: float | None = None,
     ) -> FakeResponse:
         self.calls.append(
             {
@@ -26,6 +27,7 @@ class FakeSession:
                 "url": url,
                 "headers": headers,
                 "json": json,
+                "params": params,
                 "timeout": timeout,
             }
         )
@@ -83,3 +85,20 @@ def test_insert_row_raises_on_http_error() -> None:
         assert "tesla_samples" in str(exc)
     else:
         raise AssertionError("Expected SupabaseSinkError for non-success response")
+
+
+def test_fetch_rows_uses_get_and_params() -> None:
+    session = FakeSession(FakeResponse(status_code=200, text='[{"id":"1"}]'))
+    # monkeypatch json method for payload
+    session.response.json = lambda: [{"id": "1"}]  # type: ignore[method-assign]
+    sink = make_sink(session)
+
+    rows = sink.fetch_rows("inverter_samples", select="id", limit=5)
+
+    assert rows == [{"id": "1"}]
+    assert len(session.calls) == 1
+    call = session.calls[0]
+    assert call["method"] == "GET"
+    assert call["url"] == "https://example.supabase.co/rest/v1/inverter_samples"
+    assert call["params"]["select"] == "id"
+    assert call["params"]["limit"] == "5"

@@ -71,6 +71,54 @@ class SupabaseSink:
                 f"Supabase write failed on {table} with status {response.status_code}: {error_text}"
             )
 
+    def fetch_rows(
+        self,
+        table: str,
+        *,
+        select: str = "*",
+        order: str = "created_at.desc",
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Fetch rows from a Supabase table via REST API."""
+
+        try:
+            response = self.session.request(
+                method="GET",
+                url=self._endpoint(table),
+                headers=self._headers(),
+                params={
+                    "select": select,
+                    "order": order,
+                    "limit": str(limit),
+                },
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise SupabaseSinkError(f"Supabase network error on {table}: {exc}") from exc
+
+        if response.status_code >= 400:
+            error_text = response.text[:240] if hasattr(response, "text") else ""
+            raise SupabaseSinkError(
+                f"Supabase read failed on {table} with status {response.status_code}: {error_text}"
+            )
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise SupabaseSinkError(
+                f"Supabase read on {table} returned non-JSON payload"
+            ) from exc
+
+        if not isinstance(payload, list):
+            raise SupabaseSinkError(
+                f"Supabase read on {table} returned unexpected type: {type(payload)}"
+            )
+        rows: list[dict[str, Any]] = []
+        for item in payload:
+            if isinstance(item, dict):
+                rows.append(item)
+        return rows
+
     def insert_inverter_sample(self, row: Mapping[str, Any]) -> None:
         """Insert one row into `inverter_samples`."""
 

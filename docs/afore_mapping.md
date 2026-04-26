@@ -33,3 +33,13 @@ Le scansioni sono state eseguite in sequenza con finestra di circa 2 minuti tra 
   - verifica istantanea dei valori con app inverter (soprattutto PV power);
   - almeno un evento ON/OFF con delta netto e noto del carico in quel preciso istante;
   - un caso con transizione import/export chiaramente osservabile per confermare il segno grid.
+
+## Wave 3 Dry-Run (30 minuti) - April 26, 2026
+
+- Comando eseguito: `python -m src.controller_loop_dry_run --duration-minutes 30 --log-path data/controller_dry_run_log.csv`
+- Esito run 30 minuti: completato senza crash (`cycle 1..30` presenti, nessun ciclo mancante).
+- Range PV osservato (registro candidato `560`): `3459 W .. 3680 W`.
+- Range Grid raw osservato (coppia candidata `524-525`, signed int32): `-857 W .. +274 W`.
+- Flag `GRID_SIGN_UNKNOWN`: sempre presente su tutte le righe non in errore.
+- Chiamate Tesla/Supabase: non rilevate durante il run (solo loop locale + lettura collector Afore).
+- Anomalie: 2 errori sporadici di lettura (`READ_ERROR`, cicli `6` e `9`, messaggio `Empty:`), con recupero automatico ai cicli successivi.

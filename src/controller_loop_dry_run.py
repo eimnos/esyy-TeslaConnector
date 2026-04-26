@@ -115,23 +115,20 @@ def create_optional_supabase_sink(config: AppConfig) -> tuple[SupabaseSink | Non
     return SupabaseSink(sink_config), "enabled"
 
 
-def build_supabase_row(
+def build_inverter_sample_row(
+    *,
+    sample_timestamp: str,
     cycle: int,
-    pv_power_w: float | None,
-    grid_power_raw_w: float | None,
+    pv_power_w: float,
+    grid_power_raw_w: float,
     grid_sign_mode: str,
-    grid_sign_assumed_mode: str | None,
-    grid_sign_unknown: bool | None,
-    grid_import_w: float | None,
-    grid_export_w: float | None,
-    current_amps_before: int,
-    target_amps: int | None,
-    action: str,
-    current_amps_after: int,
-    note: str,
+    grid_sign_assumed_mode: str,
+    grid_sign_unknown: bool,
+    grid_import_w: float,
+    grid_export_w: float,
 ) -> dict[str, object]:
     return {
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "sample_timestamp": sample_timestamp,
         "cycle": cycle,
         "pv_power_w": pv_power_w,
         "grid_power_raw_w": grid_power_raw_w,
@@ -140,12 +137,114 @@ def build_supabase_row(
         "grid_sign_unknown": grid_sign_unknown,
         "grid_import_w": grid_import_w,
         "grid_export_w": grid_export_w,
+        "source": "controller_loop_dry_run",
+    }
+
+
+def build_controller_decision_row(
+    *,
+    sample_timestamp: str,
+    cycle: int,
+    export_w: float | None,
+    current_amps_before: int,
+    target_amps: int | None,
+    action: str,
+    current_amps_after: int,
+    note: str,
+) -> dict[str, object]:
+    return {
+        "sample_timestamp": sample_timestamp,
+        "cycle": cycle,
+        "export_w": export_w,
         "current_amps_before": current_amps_before,
         "target_amps": target_amps,
         "action": action,
         "current_amps_after": current_amps_after,
         "note": note,
     }
+
+
+def write_success_to_supabase(
+    *,
+    sink: SupabaseSink | None,
+    cycle: int,
+    sample_timestamp: str,
+    pv_power_w: float,
+    grid_power_raw_w: float,
+    grid_sign_mode: str,
+    grid_sign_assumed_mode: str,
+    grid_sign_unknown: bool,
+    grid_import_w: float,
+    grid_export_w: float,
+    current_amps_before: int,
+    target_amps: int,
+    action: str,
+    current_amps_after: int,
+    note: str,
+) -> list[str]:
+    if sink is None:
+        return []
+
+    errors: list[str] = []
+    inverter_row = build_inverter_sample_row(
+        sample_timestamp=sample_timestamp,
+        cycle=cycle,
+        pv_power_w=pv_power_w,
+        grid_power_raw_w=grid_power_raw_w,
+        grid_sign_mode=grid_sign_mode,
+        grid_sign_assumed_mode=grid_sign_assumed_mode,
+        grid_sign_unknown=grid_sign_unknown,
+        grid_import_w=grid_import_w,
+        grid_export_w=grid_export_w,
+    )
+    decision_row = build_controller_decision_row(
+        sample_timestamp=sample_timestamp,
+        cycle=cycle,
+        export_w=grid_export_w,
+        current_amps_before=current_amps_before,
+        target_amps=target_amps,
+        action=action,
+        current_amps_after=current_amps_after,
+        note=note,
+    )
+
+    try:
+        sink.insert_inverter_sample(inverter_row)
+    except SupabaseSinkError as exc:
+        errors.append(str(exc))
+    try:
+        sink.insert_controller_decision(decision_row)
+    except SupabaseSinkError as exc:
+        errors.append(str(exc))
+
+    return errors
+
+
+def write_error_decision_to_supabase(
+    *,
+    sink: SupabaseSink | None,
+    cycle: int,
+    current_amps: int,
+    error_text: str,
+) -> str | None:
+    if sink is None:
+        return None
+
+    row = build_controller_decision_row(
+        sample_timestamp=datetime.now(timezone.utc).isoformat(),
+        cycle=cycle,
+        export_w=None,
+        current_amps_before=current_amps,
+        target_amps=None,
+        action="READ_ERROR",
+        current_amps_after=current_amps,
+        note=error_text,
+    )
+    try:
+        sink.insert_controller_decision(row)
+    except SupabaseSinkError as exc:
+        return str(exc)
+    return None
 
 
 def main() -> int:
@@ -283,29 +382,28 @@ def main() -> int:
                 )
                 csv_file.flush()
 
-                if supabase_sink is not None:
-                    row = build_supabase_row(
-                        cycle=cycle,
-                        pv_power_w=snapshot.pv_power_w,
-                        grid_power_raw_w=snapshot.grid_power_raw_w,
-                        grid_sign_mode=snapshot.grid_sign_mode,
-                        grid_sign_assumed_mode=snapshot.grid_sign_assumed_mode,
-                        grid_sign_unknown=snapshot.grid_sign_unknown,
-                        grid_import_w=snapshot.grid_import_w,
-                        grid_export_w=snapshot.grid_export_w,
-                        current_amps_before=amps_before,
-                        target_amps=target_amps,
-                        action=action,
-                        current_amps_after=current_amps,
-                        note=note,
+                supabase_errors = write_success_to_supabase(
+                    sink=supabase_sink,
+                    cycle=cycle,
+                    sample_timestamp=snapshot.timestamp_utc,
+                    pv_power_w=snapshot.pv_power_w,
+                    grid_power_raw_w=snapshot.grid_power_raw_w,
+                    grid_sign_mode=snapshot.grid_sign_mode,
+                    grid_sign_assumed_mode=snapshot.grid_sign_assumed_mode,
+                    grid_sign_unknown=snapshot.grid_sign_unknown,
+                    grid_import_w=snapshot.grid_import_w,
+                    grid_export_w=snapshot.grid_export_w,
+                    current_amps_before=amps_before,
+                    target_amps=target_amps,
+                    action=action,
+                    current_amps_after=current_amps,
+                    note=note,
+                )
+                for error_text in supabase_errors:
+                    print(
+                        f"[cycle {cycle:04d}] supabase write skipped: {error_text}",
+                        file=sys.stderr,
                     )
-                    try:
-                        supabase_sink.insert_row(row)
-                    except SupabaseSinkError as exc:
-                        print(
-                            f"[cycle {cycle:04d}] supabase write skipped: {exc}",
-                            file=sys.stderr,
-                        )
             except Exception as exc:
                 timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 error_text = f"{type(exc).__name__}: {exc}"
@@ -330,29 +428,17 @@ def main() -> int:
                 )
                 csv_file.flush()
 
-                if supabase_sink is not None:
-                    row = build_supabase_row(
-                        cycle=cycle,
-                        pv_power_w=None,
-                        grid_power_raw_w=None,
-                        grid_sign_mode=config.afore_grid_sign_mode,
-                        grid_sign_assumed_mode=None,
-                        grid_sign_unknown=None,
-                        grid_import_w=None,
-                        grid_export_w=None,
-                        current_amps_before=current_amps,
-                        target_amps=None,
-                        action="READ_ERROR",
-                        current_amps_after=current_amps,
-                        note=error_text,
+                supabase_error = write_error_decision_to_supabase(
+                    sink=supabase_sink,
+                    cycle=cycle,
+                    current_amps=current_amps,
+                    error_text=error_text,
+                )
+                if supabase_error:
+                    print(
+                        f"[cycle {cycle:04d}] supabase write skipped: {supabase_error}",
+                        file=sys.stderr,
                     )
-                    try:
-                        supabase_sink.insert_row(row)
-                    except SupabaseSinkError as supa_exc:
-                        print(
-                            f"[cycle {cycle:04d}] supabase write skipped: {supa_exc}",
-                            file=sys.stderr,
-                        )
 
             elapsed = time.time() - cycle_started_at
             sleep_seconds = max(0.0, interval_seconds - elapsed)

@@ -194,6 +194,27 @@ SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 ```
 
+## Wave 5A - Supabase Schema
+
+Schema SQL idempotente disponibile in:
+
+```text
+db/schema.sql
+```
+
+Guida setup:
+
+```text
+docs/supabase_setup.md
+```
+
+Con `SUPABASE_ENABLED=true`, il controller dry-run prova a scrivere in:
+
+- `inverter_samples`
+- `controller_decisions`
+
+in modalita best-effort (se Supabase fallisce, il loop continua).
+
 ## Sicurezza e limiti Wave 1
 
 - Tesla Fleet API non ancora attiva.
@@ -213,7 +234,11 @@ esyy-TeslaConnector/
 |  |- architecture.md
 |  |- waves.md
 |  |- afore_mapping.md
-|  `- tesla_api_strategy.md
+|  |- tesla_api_strategy.md
+|  |- tesla_api_setup.md
+|  `- supabase_setup.md
+|- db/
+|  `- schema.sql
 |- src/
 |  |- __init__.py
 |  |- config.py
@@ -223,12 +248,16 @@ esyy-TeslaConnector/
 |  |- analyze_register_changes.py
 |  |- solar_logic.py
 |  |- controller_dry_run.py
-|  `- controller_loop_dry_run.py
+|  |- controller_loop_dry_run.py
+|  `- supabase_sink.py
 |- tests/
 |  |- __init__.py
 |  |- test_solar_logic.py
 |  |- test_analyze_register_changes.py
-|  `- test_afore_reader.py
+|  |- test_afore_reader.py
+|  |- test_tesla_client.py
+|  |- test_supabase_sink.py
+|  `- test_controller_loop_supabase.py
 `- data/
    `- .gitkeep
 ```

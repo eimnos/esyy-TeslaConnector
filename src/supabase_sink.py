@@ -1,4 +1,4 @@
-"""Optional Supabase writer for Wave 5 preparation."""
+"""Optional Supabase writer for Wave 5 schema tables."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ class SupabaseSinkConfig:
 
     url: str
     service_role_key: str
-    table: str = "controller_dry_run_samples"
     timeout_seconds: float = 3.0
 
 
@@ -27,6 +26,11 @@ class SupabaseSink:
 
     Designed to be optional and non-blocking for controller execution.
     """
+
+    TABLE_INVERTER_SAMPLES = "inverter_samples"
+    TABLE_TESLA_SAMPLES = "tesla_samples"
+    TABLE_CONTROLLER_DECISIONS = "controller_decisions"
+    TABLE_CONTROLLER_SETTINGS = "controller_settings"
 
     def __init__(
         self,
@@ -45,29 +49,47 @@ class SupabaseSink:
             "Prefer": "return=minimal",
         }
 
-    def _endpoint(self) -> str:
+    def _endpoint(self, table: str) -> str:
         base = self.config.url.rstrip("/")
-        return f"{base}/rest/v1/{self.config.table}"
+        return f"{base}/rest/v1/{table}"
 
-    def insert_row(self, row: Mapping[str, Any]) -> None:
-        """Insert one row into Supabase table via REST API."""
-
+    def _insert_row(self, table: str, row: Mapping[str, Any]) -> None:
         try:
             response = self.session.request(
                 method="POST",
-                url=self._endpoint(),
+                url=self._endpoint(table),
                 headers=self._headers(),
                 json=dict(row),
                 timeout=self.config.timeout_seconds,
             )
         except requests.RequestException as exc:
-            raise SupabaseSinkError(f"Supabase network error: {exc}") from exc
+            raise SupabaseSinkError(f"Supabase network error on {table}: {exc}") from exc
 
         if response.status_code not in {200, 201, 204}:
             error_text = response.text[:240] if hasattr(response, "text") else ""
             raise SupabaseSinkError(
-                f"Supabase write failed with status {response.status_code}: {error_text}"
+                f"Supabase write failed on {table} with status {response.status_code}: {error_text}"
             )
+
+    def insert_inverter_sample(self, row: Mapping[str, Any]) -> None:
+        """Insert one row into `inverter_samples`."""
+
+        self._insert_row(self.TABLE_INVERTER_SAMPLES, row)
+
+    def insert_tesla_sample(self, row: Mapping[str, Any]) -> None:
+        """Insert one row into `tesla_samples`."""
+
+        self._insert_row(self.TABLE_TESLA_SAMPLES, row)
+
+    def insert_controller_decision(self, row: Mapping[str, Any]) -> None:
+        """Insert one row into `controller_decisions`."""
+
+        self._insert_row(self.TABLE_CONTROLLER_DECISIONS, row)
+
+    def insert_controller_settings(self, row: Mapping[str, Any]) -> None:
+        """Insert one row into `controller_settings`."""
+
+        self._insert_row(self.TABLE_CONTROLLER_SETTINGS, row)
 
     def close(self) -> None:
         close_method = getattr(self.session, "close", None)

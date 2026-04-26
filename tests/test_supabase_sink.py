@@ -35,42 +35,51 @@ class FakeSession:
         return None
 
 
-def test_insert_row_uses_service_role_headers() -> None:
-    session = FakeSession(FakeResponse(status_code=201))
-    sink = SupabaseSink(
+def make_sink(session: FakeSession) -> SupabaseSink:
+    return SupabaseSink(
         SupabaseSinkConfig(
             url="https://example.supabase.co",
             service_role_key="service-role-key",
-            table="controller_dry_run_samples",
             timeout_seconds=2.0,
         ),
         session=session,
     )
 
-    sink.insert_row({"cycle": 1, "action": "NO_ACTION"})
+
+def test_insert_inverter_sample_uses_target_table() -> None:
+    session = FakeSession(FakeResponse(status_code=201))
+    sink = make_sink(session)
+
+    sink.insert_inverter_sample({"sample_timestamp": "2026-01-01T00:00:00Z"})
 
     assert len(session.calls) == 1
     call = session.calls[0]
     assert call["method"] == "POST"
-    assert call["url"] == "https://example.supabase.co/rest/v1/controller_dry_run_samples"
+    assert call["url"] == "https://example.supabase.co/rest/v1/inverter_samples"
     assert call["headers"]["apikey"] == "service-role-key"
     assert call["headers"]["Authorization"] == "Bearer service-role-key"
     assert call["timeout"] == 2.0
 
 
+def test_insert_controller_decision_uses_target_table() -> None:
+    session = FakeSession(FakeResponse(status_code=201))
+    sink = make_sink(session)
+
+    sink.insert_controller_decision({"sample_timestamp": "2026-01-01T00:00:00Z"})
+
+    assert len(session.calls) == 1
+    call = session.calls[0]
+    assert call["url"] == "https://example.supabase.co/rest/v1/controller_decisions"
+
+
 def test_insert_row_raises_on_http_error() -> None:
     session = FakeSession(FakeResponse(status_code=400, text="bad request"))
-    sink = SupabaseSink(
-        SupabaseSinkConfig(
-            url="https://example.supabase.co",
-            service_role_key="service-role-key",
-        ),
-        session=session,
-    )
+    sink = make_sink(session)
 
     try:
-        sink.insert_row({"cycle": 1})
+        sink.insert_tesla_sample({"sample_timestamp": "2026-01-01T00:00:00Z"})
     except SupabaseSinkError as exc:
         assert "status 400" in str(exc)
+        assert "tesla_samples" in str(exc)
     else:
         raise AssertionError("Expected SupabaseSinkError for non-success response")

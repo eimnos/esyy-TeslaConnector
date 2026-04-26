@@ -7,21 +7,24 @@ import csv
 import math
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TextIO
 
 try:
     from src.afore_reader import AforeReader
-    from src.config import load_config
+    from src.config import AppConfig, load_config
     from src.solar_logic import ControlSettings, calculate_target_amps, decide_charge_action
+    from src.supabase_sink import SupabaseSink, SupabaseSinkConfig, SupabaseSinkError
 except ModuleNotFoundError:  # Allows `python src/controller_loop_dry_run.py`
     from afore_reader import AforeReader  # type: ignore[no-redef]
-    from config import load_config  # type: ignore[no-redef]
+    from config import AppConfig, load_config  # type: ignore[no-redef]
     from solar_logic import (  # type: ignore[no-redef]
         ControlSettings,
         calculate_target_amps,
         decide_charge_action,
     )
+    from supabase_sink import SupabaseSink, SupabaseSinkConfig, SupabaseSinkError  # type: ignore[no-redef]
 
 
 def parse_args() -> argparse.Namespace:
@@ -96,6 +99,55 @@ def cycles_from_duration(duration_minutes: float, interval_seconds: int) -> int 
     return max(1, int(math.ceil(total_seconds / interval_seconds)))
 
 
+def create_optional_supabase_sink(config: AppConfig) -> tuple[SupabaseSink | None, str]:
+    """Create Supabase sink only when explicitly enabled and configured."""
+
+    if not config.supabase_enabled:
+        return None, "disabled"
+
+    if not config.supabase_url or not config.supabase_service_role_key:
+        return None, "missing_config"
+
+    sink_config = SupabaseSinkConfig(
+        url=config.supabase_url,
+        service_role_key=config.supabase_service_role_key,
+    )
+    return SupabaseSink(sink_config), "enabled"
+
+
+def build_supabase_row(
+    cycle: int,
+    pv_power_w: float | None,
+    grid_power_raw_w: float | None,
+    grid_sign_mode: str,
+    grid_sign_assumed_mode: str | None,
+    grid_sign_unknown: bool | None,
+    grid_import_w: float | None,
+    grid_export_w: float | None,
+    current_amps_before: int,
+    target_amps: int | None,
+    action: str,
+    current_amps_after: int,
+    note: str,
+) -> dict[str, object]:
+    return {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "cycle": cycle,
+        "pv_power_w": pv_power_w,
+        "grid_power_raw_w": grid_power_raw_w,
+        "grid_sign_mode": grid_sign_mode,
+        "grid_sign_assumed_mode": grid_sign_assumed_mode,
+        "grid_sign_unknown": grid_sign_unknown,
+        "grid_import_w": grid_import_w,
+        "grid_export_w": grid_export_w,
+        "current_amps_before": current_amps_before,
+        "target_amps": target_amps,
+        "action": action,
+        "current_amps_after": current_amps_after,
+        "note": note,
+    }
+
+
 def main() -> int:
     args = parse_args()
 
@@ -134,6 +186,7 @@ def main() -> int:
     log_path = Path(args.log_path)
     writer, csv_file = ensure_csv_writer(log_path)
     reader = AforeReader(config)
+    supabase_sink, supabase_state = create_optional_supabase_sink(config)
 
     print("Wave 3 dry-run controller started (no Tesla API calls).")
     print(
@@ -152,6 +205,15 @@ def main() -> int:
             "WARNING: AFORE_GRID_SIGN_MODE is 'unknown'. "
             "Controller uses provisional assumption 'import_positive'."
         )
+    if supabase_state == "disabled":
+        print("Supabase sink: disabled (SUPABASE_ENABLED=false).")
+    elif supabase_state == "missing_config":
+        print(
+            "WARNING: SUPABASE_ENABLED=true but SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY missing. "
+            "Continuing without Supabase writes."
+        )
+    else:
+        print("Supabase sink: enabled (best effort, non-blocking).")
 
     current_amps = max(args.initial_current_amps, 0)
     cycle = 0
@@ -220,6 +282,30 @@ def main() -> int:
                     ]
                 )
                 csv_file.flush()
+
+                if supabase_sink is not None:
+                    row = build_supabase_row(
+                        cycle=cycle,
+                        pv_power_w=snapshot.pv_power_w,
+                        grid_power_raw_w=snapshot.grid_power_raw_w,
+                        grid_sign_mode=snapshot.grid_sign_mode,
+                        grid_sign_assumed_mode=snapshot.grid_sign_assumed_mode,
+                        grid_sign_unknown=snapshot.grid_sign_unknown,
+                        grid_import_w=snapshot.grid_import_w,
+                        grid_export_w=snapshot.grid_export_w,
+                        current_amps_before=amps_before,
+                        target_amps=target_amps,
+                        action=action,
+                        current_amps_after=current_amps,
+                        note=note,
+                    )
+                    try:
+                        supabase_sink.insert_row(row)
+                    except SupabaseSinkError as exc:
+                        print(
+                            f"[cycle {cycle:04d}] supabase write skipped: {exc}",
+                            file=sys.stderr,
+                        )
             except Exception as exc:
                 timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 error_text = f"{type(exc).__name__}: {exc}"
@@ -244,6 +330,30 @@ def main() -> int:
                 )
                 csv_file.flush()
 
+                if supabase_sink is not None:
+                    row = build_supabase_row(
+                        cycle=cycle,
+                        pv_power_w=None,
+                        grid_power_raw_w=None,
+                        grid_sign_mode=config.afore_grid_sign_mode,
+                        grid_sign_assumed_mode=None,
+                        grid_sign_unknown=None,
+                        grid_import_w=None,
+                        grid_export_w=None,
+                        current_amps_before=current_amps,
+                        target_amps=None,
+                        action="READ_ERROR",
+                        current_amps_after=current_amps,
+                        note=error_text,
+                    )
+                    try:
+                        supabase_sink.insert_row(row)
+                    except SupabaseSinkError as supa_exc:
+                        print(
+                            f"[cycle {cycle:04d}] supabase write skipped: {supa_exc}",
+                            file=sys.stderr,
+                        )
+
             elapsed = time.time() - cycle_started_at
             sleep_seconds = max(0.0, interval_seconds - elapsed)
             if sleep_seconds > 0:
@@ -252,6 +362,8 @@ def main() -> int:
         print("\nDry-run loop interrupted by user.")
     finally:
         reader.close()
+        if supabase_sink is not None:
+            supabase_sink.close()
         csv_file.close()
 
     print(f"Wave 3 dry-run completed. Log file: {log_path}")

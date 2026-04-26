@@ -28,6 +28,9 @@ class AppConfig:
     afore_grid_power_scale: float
     afore_pv_power_scale: float
     afore_grid_sign_mode: str
+    supabase_enabled: bool
+    supabase_url: str
+    supabase_service_role_key: str
 
 
 def _parse_int(name: str, default: int, minimum: int | None = None) -> int:
@@ -120,6 +123,9 @@ def load_config(env_file: str | None = None) -> AppConfig:
             "unknown",
             {"unknown", "import_positive", "export_positive"},
         ),
+        supabase_enabled=_parse_bool("SUPABASE_ENABLED", False),
+        supabase_url=os.getenv("SUPABASE_URL", "").strip(),
+        supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip(),
     )
 
     if config.collector_port > 65535:

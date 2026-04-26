@@ -170,6 +170,30 @@ Smoke test rapido (1 ciclo):
 python -m src.controller_loop_dry_run --max-cycles 1 --interval-seconds 1
 ```
 
+## Wave 5 Prep - Supabase opzionale
+
+Per preparare la Wave 5 senza dipendere dal cloud:
+
+- `SUPABASE_ENABLED=false` (default): il controller continua solo con log locale CSV.
+- `SUPABASE_ENABLED=true` + credenziali valide: abilita write best-effort su Supabase.
+- in caso di errore rete/auth/schema Supabase, il controller non si ferma.
+
+Variabili `.env`:
+
+```text
+SUPABASE_ENABLED=false
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+Quando Supabase sara pronto:
+
+```text
+SUPABASE_ENABLED=true
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+```
+
 ## Sicurezza e limiti Wave 1
 
 - Tesla Fleet API non ancora attiva.

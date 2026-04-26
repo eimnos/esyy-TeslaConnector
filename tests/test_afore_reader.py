@@ -24,6 +24,9 @@ def make_config(grid_sign_mode: str = "unknown") -> AppConfig:
         afore_grid_power_scale=1.0,
         afore_pv_power_scale=1.0,
         afore_grid_sign_mode=grid_sign_mode,
+        supabase_enabled=False,
+        supabase_url="",
+        supabase_service_role_key="",
     )
 
 

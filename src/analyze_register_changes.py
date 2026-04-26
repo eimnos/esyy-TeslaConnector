@@ -26,6 +26,28 @@ class RegisterDelta:
         return abs(self.delta)
 
 
+@dataclass(frozen=True, slots=True)
+class SignedPairDelta:
+    """Delta for one signed int32 register pair between two scan files."""
+
+    high_register: int
+    low_register: int
+    left_value: int
+    right_value: int
+
+    @property
+    def label(self) -> str:
+        return f"{self.high_register}-{self.low_register}"
+
+    @property
+    def delta(self) -> int:
+        return self.right_value - self.left_value
+
+    @property
+    def abs_delta(self) -> int:
+        return abs(self.delta)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Compare two scan CSV files and list changed registers."
@@ -58,6 +80,19 @@ def parse_args() -> argparse.Namespace:
         "--output",
         default=None,
         help="Optional CSV output path for changed registers.",
+    )
+    parser.add_argument(
+        "--signed32-pairs",
+        default=None,
+        help=(
+            "Optional comma-separated register pairs for signed int32 parsing, "
+            "example: 524-525,526-527,528-529"
+        ),
+    )
+    parser.add_argument(
+        "--pairs-output",
+        default=None,
+        help="Optional CSV output path for signed int32 pair deltas.",
     )
     return parser.parse_args()
 
@@ -104,6 +139,63 @@ def load_scan(path: Path) -> dict[int, float]:
             registers[register] = value
 
     return registers
+
+
+def parse_signed32_pairs(raw_pairs: str) -> list[tuple[int, int]]:
+    pairs: list[tuple[int, int]] = []
+    for chunk in raw_pairs.split(","):
+        token = chunk.strip()
+        if not token:
+            continue
+        if "-" not in token:
+            raise ValueError(
+                f"Invalid pair token {token!r}. Use format high-low, e.g. 524-525"
+            )
+        left_raw, right_raw = token.split("-", maxsplit=1)
+        try:
+            high = int(left_raw.strip())
+            low = int(right_raw.strip())
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid pair token {token!r}. Register indexes must be integers."
+            ) from exc
+        if high < 0 or low < 0:
+            raise ValueError(f"Invalid pair token {token!r}. Register indexes must be >= 0.")
+        pairs.append((high, low))
+
+    if not pairs:
+        raise ValueError("No valid signed32 pairs provided.")
+    return pairs
+
+
+def decode_signed_int32(high_word: float, low_word: float) -> int:
+    high = int(high_word) & 0xFFFF
+    low = int(low_word) & 0xFFFF
+    value = (high << 16) | low
+    if value & 0x80000000:
+        value -= 0x100000000
+    return value
+
+
+def compare_signed32_pairs(
+    left: dict[int, float], right: dict[int, float], pairs: list[tuple[int, int]]
+) -> list[SignedPairDelta]:
+    rows: list[SignedPairDelta] = []
+    for high, low in pairs:
+        if high not in left or low not in left or high not in right or low not in right:
+            continue
+        left_value = decode_signed_int32(left[high], left[low])
+        right_value = decode_signed_int32(right[high], right[low])
+        rows.append(
+            SignedPairDelta(
+                high_register=high,
+                low_register=low,
+                left_value=left_value,
+                right_value=right_value,
+            )
+        )
+    rows.sort(key=lambda item: item.abs_delta, reverse=True)
+    return rows
 
 
 def compare_scans(
@@ -178,6 +270,45 @@ def save_output(rows: list[RegisterDelta], output_path: Path) -> None:
             )
 
 
+def print_pair_table(rows: list[SignedPairDelta], left_label: str, right_label: str) -> None:
+    left_header = left_label[:16]
+    right_header = right_label[:16]
+    print("\nSigned int32 pair deltas")
+    print(
+        f"{'Pair':>10}  {left_header:>16}  {right_header:>16}  {'Delta':>12}  {'|Delta|':>12}"
+    )
+    print("-" * 74)
+    for item in rows:
+        print(
+            f"{item.label:>10}  "
+            f"{item.left_value:>16}  "
+            f"{item.right_value:>16}  "
+            f"{item.delta:>12}  "
+            f"{item.abs_delta:>12}"
+        )
+
+
+def save_pair_output(rows: list[SignedPairDelta], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(
+            ["pair", "high_register", "low_register", "left_value", "right_value", "delta", "abs_delta"]
+        )
+        for item in rows:
+            writer.writerow(
+                [
+                    item.label,
+                    item.high_register,
+                    item.low_register,
+                    item.left_value,
+                    item.right_value,
+                    item.delta,
+                    item.abs_delta,
+                ]
+            )
+
+
 def main() -> int:
     args = parse_args()
     if args.min_abs_delta < 0:
@@ -219,6 +350,23 @@ def main() -> int:
         output_path = Path(args.output)
         save_output(changed, output_path)
         print(f"Saved changed-register report to: {output_path}")
+
+    if args.signed32_pairs:
+        try:
+            signed_pairs = parse_signed32_pairs(args.signed32_pairs)
+        except ValueError as exc:
+            print(f"Input error: {exc}", file=sys.stderr)
+            return 2
+
+        pair_rows = compare_signed32_pairs(left_values, right_values, signed_pairs)
+        if not pair_rows:
+            print("\nSigned int32 pair deltas: no complete pairs found in both files.")
+        else:
+            print_pair_table(pair_rows, left_label=left_label, right_label=right_label)
+            if args.pairs_output:
+                pairs_output_path = Path(args.pairs_output)
+                save_pair_output(pair_rows, pairs_output_path)
+                print(f"Saved signed32 pair report to: {pairs_output_path}")
 
     return 0
 

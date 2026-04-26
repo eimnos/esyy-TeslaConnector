@@ -112,6 +112,34 @@ python -m src.analyze_register_changes data/scan_load_off.csv data/scan_load_on.
 Nota pratica:
 - se i registri `holding` risultano troppo stabili, usare `--register-type input` per cercare la telemetria live.
 
+## Wave 2B - Confirm Mapping Procedure
+
+Obiettivo Wave 2B: confermare in modo piu robusto PV/Grid/Load e testare parsing signed32 sui registri adiacenti.
+
+1. Baseline:
+
+```powershell
+python -m src.scan_afore_registers --register-type input --start 0 --end 1000 --block-size 50 --output data/confirm_baseline.csv
+```
+
+2. Carico noto ON (1.5-2.0 kW per almeno 2 minuti), poi scan:
+
+```powershell
+python -m src.scan_afore_registers --register-type input --start 0 --end 1000 --block-size 50 --output data/confirm_load_on.csv
+```
+
+3. Carico OFF, poi scan:
+
+```powershell
+python -m src.scan_afore_registers --register-type input --start 0 --end 1000 --block-size 50 --output data/confirm_load_off.csv
+```
+
+4. Diff registri variati + parsing sperimentale signed32:
+
+```powershell
+python -m src.analyze_register_changes data/confirm_load_off.csv data/confirm_load_on.csv --left-label load_off --right-label load_on --output data/diff_confirm_load.csv --signed32-pairs 524-525,526-527,528-529 --pairs-output data/diff_confirm_pairs.csv
+```
+
 ## Sicurezza e limiti Wave 1
 
 - Tesla Fleet API non ancora attiva.

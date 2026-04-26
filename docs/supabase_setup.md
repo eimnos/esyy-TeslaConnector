@@ -85,3 +85,29 @@ select * from controller_decisions order by created_at desc limit 10;
   - abilitare RLS su tutte le tabelle;
   - creare policy specifiche per dashboard e ruoli applicativi;
   - mantenere `service_role` solo nei processi backend fidati.
+
+## 8. Esito validazione reale (Wave 5B)
+
+Data test: `2026-04-26` (UTC)
+
+Passi eseguiti:
+
+1. `python -m src.check_supabase_connection --insert-test-sample`
+2. `python -m src.controller_loop_dry_run --duration-minutes 5 --log-path data/controller_dry_run_log.csv`
+3. verifica ultime righe su Supabase (`inverter_samples`, `controller_decisions`)
+
+Timestamp osservati:
+
+- connection test inserito circa `2026-04-26T13:46:49Z`
+- run controller stabile su cicli `1..5` tra `2026-04-26T13:47:00Z` e `2026-04-26T13:51:00Z`
+
+Tabelle popolate (confermate):
+
+- `inverter_samples`: record `controller_loop_dry_run` + record `connection_test`
+- `controller_decisions`: record `NO_ACTION` + record `CONNECTION_TEST`
+
+Esito:
+
+- scrittura reale Supabase confermata;
+- controller stabile durante il run;
+- comportamento best-effort invariato (non blocca il loop in caso errore Supabase).

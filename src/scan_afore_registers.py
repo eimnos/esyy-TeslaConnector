@@ -26,7 +26,7 @@ except ModuleNotFoundError:  # Allows `python src/scan_afore_registers.py`
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scan holding registers on the Afore Solarman collector."
+        description="Scan registers on the Afore Solarman collector."
     )
     parser.add_argument("--start", type=int, default=0, help="Scan start register (inclusive).")
     parser.add_argument("--end", type=int, default=500, help="Scan end register (inclusive).")
@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
         "--output",
         default="data/afore_scan.csv",
         help="Output CSV path (default: data/afore_scan.csv).",
+    )
+    parser.add_argument(
+        "--register-type",
+        choices=("holding", "input"),
+        default="holding",
+        help="Register type to scan (default: holding).",
     )
     return parser.parse_args()
 
@@ -62,6 +68,12 @@ def close_client(client: Any) -> None:
     close = getattr(client, "close", None)
     if callable(close):
         close()
+
+
+def read_register_block(client: Any, start: int, count: int, register_type: str) -> list[int]:
+    if register_type == "holding":
+        return client.read_holding_registers(start, count)
+    return client.read_input_registers(start, count)
 
 
 def block_ranges(start: int, end: int, block_size: int) -> list[tuple[int, int]]:
@@ -110,10 +122,18 @@ def main() -> int:
         try:
             for idx, (block_start, block_count) in enumerate(ranges, start=1):
                 block_end = block_start + block_count - 1
-                print(f"[{idx}/{total_blocks}] Reading registers {block_start}..{block_end}")
+                print(
+                    f"[{idx}/{total_blocks}] Reading {args.register_type} registers "
+                    f"{block_start}..{block_end}"
+                )
 
                 try:
-                    values = client.read_holding_registers(block_start, block_count)
+                    values = read_register_block(
+                        client=client,
+                        start=block_start,
+                        count=block_count,
+                        register_type=args.register_type,
+                    )
                     if not isinstance(values, (list, tuple)):
                         raise TypeError(
                             f"Unexpected response type {type(values)} for block {block_start}..{block_end}"

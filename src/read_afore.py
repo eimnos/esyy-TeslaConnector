@@ -23,10 +23,16 @@ except ModuleNotFoundError:  # Allows `python src/read_afore.py`
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Read a block of holding registers from an Afore collector."
+        description="Read a block of registers from an Afore collector."
     )
     parser.add_argument("--start", type=int, default=0, help="First register index.")
     parser.add_argument("--count", type=int, default=100, help="Number of registers.")
+    parser.add_argument(
+        "--register-type",
+        choices=("holding", "input"),
+        default="holding",
+        help="Register type to read (default: holding).",
+    )
     return parser.parse_args()
 
 
@@ -55,6 +61,12 @@ def close_client(client: Any) -> None:
         close()
 
 
+def read_register_block(client: Any, start: int, count: int, register_type: str) -> list[int]:
+    if register_type == "holding":
+        return client.read_holding_registers(start, count)
+    return client.read_input_registers(start, count)
+
+
 def main() -> int:
     args = parse_args()
     if args.start < 0 or args.count <= 0:
@@ -74,7 +86,7 @@ def main() -> int:
         return 1
 
     try:
-        values = client.read_holding_registers(args.start, args.count)
+        values = read_register_block(client, args.start, args.count, args.register_type)
     except (socket.timeout, TimeoutError):
         print("Timeout while reading collector registers.", file=sys.stderr)
         return 1
@@ -91,7 +103,10 @@ def main() -> int:
         print(f"Unexpected response format: {type(values)}", file=sys.stderr)
         return 1
 
-    print(f"Read {len(values)} registers from {config.collector_ip}:{config.collector_port}")
+    print(
+        f"Read {len(values)} {args.register_type} registers from "
+        f"{config.collector_ip}:{config.collector_port}"
+    )
     for index, value in enumerate(values):
         register = args.start + index
         print(f"[{register:05d}] {value}")

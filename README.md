@@ -72,11 +72,45 @@ Simulazione logica di controllo senza Tesla API:
 python -m src.controller_dry_run --export-w 2200 --current-amps 0
 ```
 
+Analisi differenze tra due scansioni registri:
+
+```powershell
+python -m src.analyze_register_changes data/scan_morning.csv data/scan_midday.csv --output data/diff_morning_midday.csv
+```
+
 ## Test
 
 ```powershell
 pytest
 ```
+
+## Wave 2 - Register Mapping Procedure
+
+Obiettivo Wave 2: identificare in modo affidabile i registri per PV Power, Grid Power, Load Power, Daily Production e Total Production.
+
+1. Acquisire le scansioni in condizioni diverse (Tesla scollegata):
+
+```powershell
+python -m src.scan_afore_registers --register-type input --start 0 --end 1000 --block-size 50 --output data/scan_morning.csv
+python -m src.scan_afore_registers --register-type input --start 0 --end 1000 --block-size 50 --output data/scan_midday.csv
+python -m src.scan_afore_registers --register-type input --start 0 --end 1000 --block-size 50 --output data/scan_load_off.csv
+python -m src.scan_afore_registers --register-type input --start 0 --end 1000 --block-size 50 --output data/scan_load_on.csv
+```
+
+2. Confrontare i file per vedere solo i registri che cambiano:
+
+```powershell
+python -m src.analyze_register_changes data/scan_morning.csv data/scan_midday.csv --left-label morning --right-label midday --output data/diff_morning_midday.csv
+python -m src.analyze_register_changes data/scan_load_off.csv data/scan_load_on.csv --left-label load_off --right-label load_on --output data/diff_load_off_on.csv
+```
+
+3. Aggiornare `docs/afore_mapping.md` con:
+- formula di conversione (es. signed int16/int32, scale x0.1 o x0.01);
+- confronto con valore visto in app/inverter display;
+- stato conferma finale.
+
+Nota pratica:
+- se i registri `holding` risultano troppo stabili, usare `--register-type input` per cercare la telemetria live.
 
 ## Sicurezza e limiti Wave 1
 
@@ -89,25 +123,26 @@ pytest
 
 ```text
 esyy-TeslaConnector/
-├─ README.md
-├─ .gitignore
-├─ .env.example
-├─ requirements.txt
-├─ docs/
-│  ├─ architecture.md
-│  ├─ waves.md
-│  ├─ afore_mapping.md
-│  └─ tesla_api_strategy.md
-├─ src/
-│  ├─ __init__.py
-│  ├─ config.py
-│  ├─ read_afore.py
-│  ├─ scan_afore_registers.py
-│  ├─ solar_logic.py
-│  └─ controller_dry_run.py
-├─ tests/
-│  ├─ __init__.py
-│  └─ test_solar_logic.py
-└─ data/
-   └─ .gitkeep
+|- README.md
+|- .gitignore
+|- .env.example
+|- requirements.txt
+|- docs/
+|  |- architecture.md
+|  |- waves.md
+|  |- afore_mapping.md
+|  `- tesla_api_strategy.md
+|- src/
+|  |- __init__.py
+|  |- config.py
+|  |- read_afore.py
+|  |- scan_afore_registers.py
+|  |- analyze_register_changes.py
+|  |- solar_logic.py
+|  `- controller_dry_run.py
+|- tests/
+|  |- __init__.py
+|  `- test_solar_logic.py
+`- data/
+   `- .gitkeep
 ```

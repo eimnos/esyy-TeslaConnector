@@ -140,6 +140,36 @@ python -m src.scan_afore_registers --register-type input --start 0 --end 1000 --
 python -m src.analyze_register_changes data/confirm_load_off.csv data/confirm_load_on.csv --left-label load_off --right-label load_on --output data/diff_confirm_load.csv --signed32-pairs 524-525,526-527,528-529 --pairs-output data/diff_confirm_pairs.csv
 ```
 
+## Wave 3 - Prudente Dry-Run Controller
+
+Assunzioni provvisorie:
+- Grid Power candidato: `524-525` (`int32 signed`)
+- PV Power candidato: `560`
+- Load Power: non confermato
+
+Nuove variabili `.env` (con default in `.env.example`):
+
+```text
+AFORE_PV_POWER_REGISTER=560
+AFORE_GRID_POWER_REGISTER_HIGH=524
+AFORE_GRID_POWER_REGISTER_LOW=525
+AFORE_GRID_POWER_SCALE=1
+AFORE_PV_POWER_SCALE=1
+AFORE_GRID_SIGN_MODE=unknown
+```
+
+Esecuzione loop dry-run (30 minuti, senza Tesla API):
+
+```powershell
+python -m src.controller_loop_dry_run --duration-minutes 30 --log-path data/controller_dry_run_log.csv
+```
+
+Smoke test rapido (1 ciclo):
+
+```powershell
+python -m src.controller_loop_dry_run --max-cycles 1 --interval-seconds 1
+```
+
 ## Sicurezza e limiti Wave 1
 
 - Tesla Fleet API non ancora attiva.
@@ -163,14 +193,18 @@ esyy-TeslaConnector/
 |- src/
 |  |- __init__.py
 |  |- config.py
+|  |- afore_reader.py
 |  |- read_afore.py
 |  |- scan_afore_registers.py
 |  |- analyze_register_changes.py
 |  |- solar_logic.py
-|  `- controller_dry_run.py
+|  |- controller_dry_run.py
+|  `- controller_loop_dry_run.py
 |- tests/
 |  |- __init__.py
-|  `- test_solar_logic.py
+|  |- test_solar_logic.py
+|  |- test_analyze_register_changes.py
+|  `- test_afore_reader.py
 `- data/
    `- .gitkeep
 ```

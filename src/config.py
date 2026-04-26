@@ -22,6 +22,12 @@ class AppConfig:
     tesla_max_amps: int
     grid_export_start_w: float
     grid_export_stop_w: float
+    afore_pv_power_register: int
+    afore_grid_power_register_high: int
+    afore_grid_power_register_low: int
+    afore_grid_power_scale: float
+    afore_pv_power_scale: float
+    afore_grid_sign_mode: str
 
 
 def _parse_int(name: str, default: int, minimum: int | None = None) -> int:
@@ -67,6 +73,19 @@ def _parse_bool(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be a boolean value, got: {raw_value!r}")
 
 
+def _parse_choice(name: str, default: str, allowed: set[str]) -> str:
+    raw_value = os.getenv(name)
+    if raw_value is None or raw_value.strip() == "":
+        value = default
+    else:
+        value = raw_value.strip().lower()
+
+    if value not in allowed:
+        allowed_text = ", ".join(sorted(allowed))
+        raise ValueError(f"{name} must be one of: {allowed_text}. Got: {value!r}")
+    return value
+
+
 def load_config(env_file: str | None = None) -> AppConfig:
     """Load and validate configuration from `.env` + environment variables."""
 
@@ -87,6 +106,20 @@ def load_config(env_file: str | None = None) -> AppConfig:
         tesla_max_amps=_parse_int("TESLA_MAX_AMPS", 16, minimum=1),
         grid_export_start_w=_parse_float("GRID_EXPORT_START_W", 1600.0, minimum=0.0),
         grid_export_stop_w=_parse_float("GRID_EXPORT_STOP_W", 900.0, minimum=0.0),
+        afore_pv_power_register=_parse_int("AFORE_PV_POWER_REGISTER", 560, minimum=0),
+        afore_grid_power_register_high=_parse_int(
+            "AFORE_GRID_POWER_REGISTER_HIGH", 524, minimum=0
+        ),
+        afore_grid_power_register_low=_parse_int(
+            "AFORE_GRID_POWER_REGISTER_LOW", 525, minimum=0
+        ),
+        afore_grid_power_scale=_parse_float("AFORE_GRID_POWER_SCALE", 1.0, minimum=0.000001),
+        afore_pv_power_scale=_parse_float("AFORE_PV_POWER_SCALE", 1.0, minimum=0.000001),
+        afore_grid_sign_mode=_parse_choice(
+            "AFORE_GRID_SIGN_MODE",
+            "unknown",
+            {"unknown", "import_positive", "export_positive"},
+        ),
     )
 
     if config.collector_port > 65535:
@@ -100,6 +133,11 @@ def load_config(env_file: str | None = None) -> AppConfig:
     if config.grid_export_start_w < config.grid_export_stop_w:
         raise ValueError(
             "GRID_EXPORT_START_W should be >= GRID_EXPORT_STOP_W to preserve hysteresis"
+        )
+
+    if config.afore_grid_power_register_high == config.afore_grid_power_register_low:
+        raise ValueError(
+            "AFORE_GRID_POWER_REGISTER_HIGH and AFORE_GRID_POWER_REGISTER_LOW must be different"
         )
 
     return config

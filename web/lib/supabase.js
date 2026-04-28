@@ -84,3 +84,11 @@ export function getRecentInverterSamples(limitCount = 100, minutesBack = null) {
 export function getRecentControllerDecisions(limitCount = 100, minutesBack = null) {
   return queryRecent("controller_decisions", { limitCount, minutesBack });
 }
+
+export function getLatestTeslaSample() {
+  return queryLatest("tesla_samples");
+}
+
+export function getRecentTeslaSamples(limitCount = 100, minutesBack = null) {
+  return queryRecent("tesla_samples", { limitCount, minutesBack });
+}

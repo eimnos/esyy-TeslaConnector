@@ -296,6 +296,34 @@ Vincoli confermati:
 - nessuna write da frontend;
 - nessun comando Tesla.
 
+## Wave 8B - Tesla Samples to Supabase and Dashboard
+
+Obiettivo:
+
+- acquisire snapshot Tesla read-only;
+- scrivere i campioni in `tesla_samples` su Supabase (best effort);
+- visualizzare dati Tesla su dashboard e history.
+
+Script principali:
+
+```powershell
+python -m src.tesla_readonly_status --insert-supabase --output-json data/tesla_status_sample.json
+python -m src.tesla_sync_readonly --watch --iterations 6 --output-json data/tesla_status_sample.json
+```
+
+Campi Tesla salvati (minimo):
+
+- `sample_timestamp`
+- `vehicle_id`
+- `vehicle_state`
+- `battery_level`
+- `charging_state`
+- `charge_current_request`
+- `charge_current_request_max`
+- `charge_limit_soc`
+- `odometer_km`
+- `energy_added_kwh`
+
 ## Sicurezza e limiti Wave 1
 
 - Tesla commands non attivi.
@@ -331,6 +359,7 @@ esyy-TeslaConnector/
 |  |- solar_logic.py
 |  |- controller_dry_run.py
 |  |- controller_loop_dry_run.py
+|  |- tesla_sync_readonly.py
 |  |- supabase_sink.py
 |  `- check_supabase_connection.py
 |- tests/

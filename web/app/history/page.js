@@ -1,7 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { getRecentControllerDecisions, getRecentInverterSamples } from "../../lib/supabase";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  getRecentControllerDecisions,
+  getRecentInverterSamples,
+  getRecentTeslaSamples
+} from "../../lib/supabase";
 
 const RANGE_OPTIONS = [
   { label: "30 min", minutes: 30 },
@@ -25,6 +30,14 @@ function formatNumber(value, digits = 2) {
   return numeric.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
 
+function asNumber(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 function formatTimestamp(value) {
   if (!value) {
     return "-";
@@ -34,6 +47,17 @@ function formatTimestamp(value) {
     return String(value);
   }
   return date.toLocaleString();
+}
+
+function formatChartTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function sortByTimestampDesc(rows) {
@@ -49,6 +73,7 @@ export default function HistoryPage() {
   const [refreshSeconds, setRefreshSeconds] = useState(DEFAULT_REFRESH);
   const [inverterRows, setInverterRows] = useState([]);
   const [decisionRows, setDecisionRows] = useState([]);
+  const [teslaRows, setTeslaRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -63,13 +88,15 @@ export default function HistoryPage() {
       }
 
       try {
-        const [inverterResult, decisionsResult] = await Promise.all([
+        const [inverterResult, decisionsResult, teslaResult] = await Promise.all([
           getRecentInverterSamples(TABLE_LIMIT, rangeMinutes),
-          getRecentControllerDecisions(TABLE_LIMIT, rangeMinutes)
+          getRecentControllerDecisions(TABLE_LIMIT, rangeMinutes),
+          getRecentTeslaSamples(TABLE_LIMIT, rangeMinutes)
         ]);
 
         setInverterRows(sortByTimestampDesc(Array.isArray(inverterResult) ? inverterResult : []));
         setDecisionRows(sortByTimestampDesc(Array.isArray(decisionsResult) ? decisionsResult : []));
+        setTeslaRows(sortByTimestampDesc(Array.isArray(teslaResult) ? teslaResult : []));
         setErrorMessage(null);
       } catch (error) {
         const readable = error instanceof Error ? error.message : "Unknown error while loading history.";
@@ -91,6 +118,19 @@ export default function HistoryPage() {
     const timerId = window.setInterval(() => fetchRows(true), refreshSeconds * 1000);
     return () => window.clearInterval(timerId);
   }, [fetchRows, refreshSeconds]);
+
+  const teslaSeries = useMemo(() => {
+    return [...teslaRows].reverse().map((row) => ({
+      label: formatChartTime(row.sample_timestamp),
+      soc: asNumber(row.battery_level),
+      requestedAmps: asNumber(row.charge_current_request),
+      maxAmps: asNumber(row.charge_current_request_max)
+    }));
+  }, [teslaRows]);
+
+  const hasTeslaSeries = teslaSeries.some(
+    (point) => point.soc !== null || point.requestedAmps !== null || point.maxAmps !== null
+  );
 
   return (
     <section className="page-grid">
@@ -148,7 +188,36 @@ export default function HistoryPage() {
         {errorMessage ? <p className="status-error">Error: {errorMessage}</p> : null}
       </article>
 
-      <div className="history-grid">
+      <article className="chart-card">
+        <h2>Tesla SOC / Ampere</h2>
+        {loading ? (
+          <p className="chart-empty">Loading Tesla chart...</p>
+        ) : hasTeslaSeries ? (
+          <div className="chart-body">
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={teslaSeries}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#d8e6dc" />
+                <XAxis dataKey="label" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="soc" name="SOC (%)" stroke="#0f9d58" />
+                <Line
+                  type="monotone"
+                  dataKey="requestedAmps"
+                  name="Requested Amps (A)"
+                  stroke="#c95f3d"
+                />
+                <Line type="monotone" dataKey="maxAmps" name="Max Amps (A)" stroke="#0f7c9d" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <p className="chart-empty">No Tesla samples in selected range.</p>
+        )}
+      </article>
+
+      <div className="history-grid history-grid-wide">
         <article className="table-card">
           <h2>inverter_samples (latest 100)</h2>
           <div className="table-wrapper">
@@ -221,6 +290,56 @@ export default function HistoryPage() {
                       <td>{formatNumber(row.export_w)}</td>
                       <td>{formatNumber(row.target_amps, 0)}</td>
                       <td>{row.note ?? "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article className="table-card">
+          <h2>tesla_samples (latest 100)</h2>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>sample_timestamp</th>
+                  <th>vehicle_id</th>
+                  <th>vehicle_state</th>
+                  <th>battery_level</th>
+                  <th>charging_state</th>
+                  <th>req_amps</th>
+                  <th>max_amps</th>
+                  <th>charge_limit_soc</th>
+                  <th>odometer_km</th>
+                  <th>energy_added_kwh</th>
+                  <th>source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={11}>Loading Tesla samples...</td>
+                  </tr>
+                ) : teslaRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={11}>No Tesla samples in selected range.</td>
+                  </tr>
+                ) : (
+                  teslaRows.map((row) => (
+                    <tr key={row.id}>
+                      <td>{formatTimestamp(row.sample_timestamp)}</td>
+                      <td>{row.vehicle_id ?? "-"}</td>
+                      <td>{row.vehicle_state ?? "-"}</td>
+                      <td>{formatNumber(row.battery_level)}</td>
+                      <td>{row.charging_state ?? "-"}</td>
+                      <td>{formatNumber(row.charge_current_request)}</td>
+                      <td>{formatNumber(row.charge_current_request_max)}</td>
+                      <td>{formatNumber(row.charge_limit_soc)}</td>
+                      <td>{formatNumber(row.odometer_km)}</td>
+                      <td>{formatNumber(row.energy_added_kwh)}</td>
+                      <td>{row.source ?? "-"}</td>
                     </tr>
                   ))
                 )}

@@ -2,6 +2,7 @@
 __pycache__/
 .venv/
 data/*.csv
+data/tesla_status_sample.json
 .pytest_cache/
 .DS_Store
 web/node_modules/

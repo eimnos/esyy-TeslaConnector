@@ -16,8 +16,10 @@ import {
 import {
   getLatestControllerDecision,
   getLatestInverterSample,
+  getLatestTeslaSample,
   getRecentControllerDecisions,
-  getRecentInverterSamples
+  getRecentInverterSamples,
+  getRecentTeslaSamples
 } from "../../lib/supabase";
 
 const REFRESH_OPTIONS_SECONDS = [30, 60];
@@ -122,8 +124,10 @@ export default function DashboardPage() {
   const [windowMinutes, setWindowMinutes] = useState(DEFAULT_WINDOW_MINUTES);
   const [inverterSample, setInverterSample] = useState(null);
   const [controllerDecision, setControllerDecision] = useState(null);
+  const [teslaSample, setTeslaSample] = useState(null);
   const [inverterRows, setInverterRows] = useState([]);
   const [decisionRows, setDecisionRows] = useState([]);
+  const [teslaRows, setTeslaRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -138,17 +142,28 @@ export default function DashboardPage() {
       }
 
       try {
-        const [latestInverter, latestDecision, inverterHistory, decisionHistory] = await Promise.all([
+        const [
+          latestInverter,
+          latestDecision,
+          latestTesla,
+          inverterHistory,
+          decisionHistory,
+          teslaHistory
+        ] = await Promise.all([
           getLatestInverterSample(),
           getLatestControllerDecision(),
+          getLatestTeslaSample(),
           getRecentInverterSamples(CHART_LIMIT, windowMinutes),
-          getRecentControllerDecisions(CHART_LIMIT, windowMinutes)
+          getRecentControllerDecisions(CHART_LIMIT, windowMinutes),
+          getRecentTeslaSamples(CHART_LIMIT, windowMinutes)
         ]);
 
         setInverterSample(latestInverter);
         setControllerDecision(latestDecision);
+        setTeslaSample(latestTesla);
         setInverterRows(Array.isArray(inverterHistory) ? inverterHistory : []);
         setDecisionRows(Array.isArray(decisionHistory) ? decisionHistory : []);
+        setTeslaRows(Array.isArray(teslaHistory) ? teslaHistory : []);
         setErrorMessage(null);
       } catch (error) {
         const readable = error instanceof Error ? error.message : "Unknown error while loading data.";
@@ -177,7 +192,8 @@ export default function DashboardPage() {
 
   const latestTimestamp = newestTimestamp(
     inverterSample?.sample_timestamp,
-    controllerDecision?.sample_timestamp
+    controllerDecision?.sample_timestamp,
+    teslaSample?.sample_timestamp
   );
   const badgeState = getDataBadgeState(latestTimestamp, errorMessage);
 
@@ -187,6 +203,16 @@ export default function DashboardPage() {
   const targetAmpsValue = formatNumber(controllerDecision?.target_amps, "A");
   const decisionValue = controllerDecision?.action ?? "-";
   const updatedAtValue = formatTimestamp(latestTimestamp);
+  const teslaSocValue = formatNumber(teslaSample?.battery_level, "%");
+  const teslaChargingValue = teslaSample?.charging_state ?? "-";
+  const teslaAmpsRequestValue =
+    teslaSample?.charge_current_request !== null && teslaSample?.charge_current_request !== undefined
+      ? `${formatNumber(teslaSample?.charge_current_request)} / ${formatNumber(
+          teslaSample?.charge_current_request_max
+        )} A`
+      : "-";
+  const teslaChargeLimitValue = formatNumber(teslaSample?.charge_limit_soc, "%");
+  const teslaOdometerValue = formatNumber(teslaSample?.odometer_km, "km");
 
   const pvSeries = useMemo(() => {
     return [...inverterRows].reverse().map((row) => ({
@@ -212,11 +238,22 @@ export default function DashboardPage() {
     }));
   }, [decisionRows]);
 
+  const teslaSocSeries = useMemo(() => {
+    return [...teslaRows].reverse().map((row) => ({
+      label: formatChartTime(row.sample_timestamp),
+      soc: asNumber(row.battery_level),
+      requested: asNumber(row.charge_current_request)
+    }));
+  }, [teslaRows]);
+
   const hasPvSeries = pvSeries.some((item) => item.pvPower !== null);
   const hasGridSeries = gridSeries.some(
     (item) => item.gridImport !== null || item.gridExport !== null || item.gridRaw !== null
   );
   const hasAmpsSeries = ampsSeries.some((item) => item.targetAmps !== null);
+  const hasTeslaSocSeries = teslaSocSeries.some(
+    (item) => item.soc !== null || item.requested !== null
+  );
 
   return (
     <section className="page-grid">
@@ -299,6 +336,26 @@ export default function DashboardPage() {
           <h3>Last Update</h3>
           <p className={metricValueClass(updatedAtValue)}>{updatedAtValue}</p>
         </article>
+        <article className="metric-card">
+          <h3>Tesla SOC</h3>
+          <p className={metricValueClass(teslaSocValue)}>{teslaSocValue}</p>
+        </article>
+        <article className="metric-card">
+          <h3>Tesla Charging</h3>
+          <p className={metricValueClass(teslaChargingValue)}>{teslaChargingValue}</p>
+        </article>
+        <article className="metric-card">
+          <h3>Tesla Req/Max</h3>
+          <p className={metricValueClass(teslaAmpsRequestValue)}>{teslaAmpsRequestValue}</p>
+        </article>
+        <article className="metric-card">
+          <h3>Tesla Limit</h3>
+          <p className={metricValueClass(teslaChargeLimitValue)}>{teslaChargeLimitValue}</p>
+        </article>
+        <article className="metric-card">
+          <h3>Tesla Odometer</h3>
+          <p className={metricValueClass(teslaOdometerValue)}>{teslaOdometerValue}</p>
+        </article>
       </section>
 
       <div className="card-grid">
@@ -361,6 +418,52 @@ export default function DashboardPage() {
             </div>
           </dl>
           <p className="note">{controllerDecision?.note ?? "No notes."}</p>
+        </article>
+
+        <article className="data-card">
+          <h2>Latest Tesla Sample</h2>
+          <dl>
+            <div>
+              <dt>Sample timestamp</dt>
+              <dd>{formatTimestamp(teslaSample?.sample_timestamp)}</dd>
+            </div>
+            <div>
+              <dt>Vehicle ID</dt>
+              <dd>{teslaSample?.vehicle_id ?? "-"}</dd>
+            </div>
+            <div>
+              <dt>Vehicle state</dt>
+              <dd>{teslaSample?.vehicle_state ?? "-"}</dd>
+            </div>
+            <div>
+              <dt>Battery level</dt>
+              <dd>{formatNumber(teslaSample?.battery_level, "%")}</dd>
+            </div>
+            <div>
+              <dt>Charging state</dt>
+              <dd>{teslaSample?.charging_state ?? "-"}</dd>
+            </div>
+            <div>
+              <dt>Ampere richiesti</dt>
+              <dd>{formatNumber(teslaSample?.charge_current_request, "A")}</dd>
+            </div>
+            <div>
+              <dt>Ampere max</dt>
+              <dd>{formatNumber(teslaSample?.charge_current_request_max, "A")}</dd>
+            </div>
+            <div>
+              <dt>Charge limit</dt>
+              <dd>{formatNumber(teslaSample?.charge_limit_soc, "%")}</dd>
+            </div>
+            <div>
+              <dt>Odometer</dt>
+              <dd>{formatNumber(teslaSample?.odometer_km, "km")}</dd>
+            </div>
+            <div>
+              <dt>Energy added</dt>
+              <dd>{formatNumber(teslaSample?.energy_added_kwh, "kWh")}</dd>
+            </div>
+          </dl>
         </article>
       </div>
 
@@ -430,6 +533,32 @@ export default function DashboardPage() {
             </div>
           ) : (
             <p className="chart-empty">No target amps data in selected range.</p>
+          )}
+        </article>
+
+        <article className="chart-card">
+          <h2>Tesla SOC / Requested Amps</h2>
+          {hasTeslaSocSeries ? (
+            <div className="chart-body">
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={teslaSocSeries}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#d8e6dc" />
+                  <XAxis dataKey="label" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="soc" name="SOC (%)" stroke="#0f9d58" />
+                  <Line
+                    type="monotone"
+                    dataKey="requested"
+                    name="Requested Amps (A)"
+                    stroke="#c95f3d"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="chart-empty">No Tesla chart data in selected range.</p>
           )}
         </article>
       </section>

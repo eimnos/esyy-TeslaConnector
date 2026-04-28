@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from src.tesla_client import TeslaApiConfig, TeslaFleetClient, TeslaUnauthorizedError
-from src.tesla_readonly_status import build_status_snapshot
+from src.tesla_readonly_status import build_status_snapshot, build_tesla_sample_row
 
 
 class FakeResponse:
@@ -100,13 +100,16 @@ def test_asleep_vehicle_skips_vehicle_data_and_no_wakeup(tmp_path: Path) -> None
 
 def test_build_status_snapshot_parses_charge_state() -> None:
     readonly_status = {
-        "vehicle": {"state": "online"},
+        "vehicle": {"state": "online", "id_s": "929871615538817"},
         "vehicle_data": {
             "charge_state": {
                 "battery_level": 72,
                 "charging_state": "Charging",
                 "charge_amps": 10,
+                "charge_current_request": 8,
+                "charge_current_request_max": 16,
                 "charge_limit_soc": 80,
+                "charge_energy_added": 3.5,
             },
             "vehicle_state": {
                 "odometer": 45123.4,
@@ -119,8 +122,39 @@ def test_build_status_snapshot_parses_charge_state() -> None:
     snapshot = build_status_snapshot(readonly_status)
 
     assert snapshot["vehicle_state"] == "online"
+    assert snapshot["vehicle_id"] == "929871615538817"
     assert snapshot["battery_level"] == 72.0
     assert snapshot["charging_state"] == "Charging"
     assert snapshot["charge_amps"] == 10.0
+    assert snapshot["charge_current_request"] == 8.0
+    assert snapshot["charge_current_request_max"] == 16.0
     assert snapshot["charge_limit_soc"] == 80.0
     assert snapshot["odometer_km"] == 45123.4
+    assert snapshot["energy_added_kwh"] == 3.5
+
+
+def test_build_tesla_sample_row_maps_required_columns() -> None:
+    snapshot = {
+        "sample_timestamp": "2026-04-29T00:00:00+00:00",
+        "vehicle_id": "929871615538817",
+        "vehicle_state": "online",
+        "battery_level": 70.0,
+        "charging_state": "Charging",
+        "charge_amps": 5.0,
+        "charge_current_request": 8.0,
+        "charge_current_request_max": 16.0,
+        "charge_limit_soc": 80.0,
+        "odometer_km": 35180.68,
+        "energy_added_kwh": 2.2,
+        "asleep_or_offline": False,
+        "skipped_vehicle_data": False,
+    }
+
+    row = build_tesla_sample_row(snapshot, source="tesla_sync_readonly")
+
+    assert row["sample_timestamp"] == "2026-04-29T00:00:00+00:00"
+    assert row["vehicle_id"] == "929871615538817"
+    assert row["charge_current_request"] == 8.0
+    assert row["charge_current_request_max"] == 16.0
+    assert row["energy_added_kwh"] == 2.2
+    assert row["source"] == "tesla_sync_readonly"

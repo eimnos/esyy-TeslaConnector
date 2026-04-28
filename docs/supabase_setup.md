@@ -17,6 +17,9 @@ Preparare Supabase per salvare:
 
 Lo script e idempotente (`create table if not exists`, `create index if not exists`), quindi puo essere rieseguito senza errori di duplicazione.
 
+Nota Wave 8B:
+- rieseguire `db/schema.sql` per aggiungere le nuove colonne Tesla (`vehicle_id`, `charge_current_request`, `charge_current_request_max`, `energy_added_kwh`) anche su progetti gia inizializzati.
+
 ## 2. Variabili ambiente
 
 Aggiorna `.env`:
@@ -62,7 +65,29 @@ Se `SUPABASE_ENABLED=false` lo script termina con esito positivo senza errore (s
 ```sql
 select * from inverter_samples order by created_at desc limit 10;
 select * from controller_decisions order by created_at desc limit 10;
+select * from tesla_samples order by created_at desc limit 10;
 ```
+
+## 5B. Tesla read-only sync (Wave 8B)
+
+Per salvare snapshot Tesla in `tesla_samples`:
+
+```powershell
+python -m src.tesla_sync_readonly --output-json data/tesla_status_sample.json
+```
+
+Campi Tesla salvati:
+
+- `sample_timestamp`
+- `vehicle_id`
+- `vehicle_state`
+- `battery_level`
+- `charging_state`
+- `charge_current_request`
+- `charge_current_request_max`
+- `charge_limit_soc`
+- `odometer_km`
+- `energy_added_kwh`
 
 ## 6. Troubleshooting
 

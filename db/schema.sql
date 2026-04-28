@@ -24,17 +24,30 @@ create index if not exists idx_inverter_samples_sample_timestamp
 create table if not exists public.tesla_samples (
     id uuid primary key default gen_random_uuid(),
     sample_timestamp timestamptz not null,
+    vehicle_id text,
     vehicle_state text,
     battery_level double precision,
     charging_state text,
     charge_amps double precision,
+    charge_current_request double precision,
+    charge_current_request_max double precision,
     charge_limit_soc double precision,
     odometer_km double precision,
+    energy_added_kwh double precision,
     asleep_or_offline boolean,
     skipped_vehicle_data boolean,
     source text default 'tesla_readonly_status',
     created_at timestamptz not null default now()
 );
+
+alter table if exists public.tesla_samples
+    add column if not exists vehicle_id text;
+alter table if exists public.tesla_samples
+    add column if not exists charge_current_request double precision;
+alter table if exists public.tesla_samples
+    add column if not exists charge_current_request_max double precision;
+alter table if exists public.tesla_samples
+    add column if not exists energy_added_kwh double precision;
 
 create index if not exists idx_tesla_samples_sample_timestamp
     on public.tesla_samples (sample_timestamp);

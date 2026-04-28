@@ -168,6 +168,34 @@ Conclusione:
 - comando reale non applicabile finche il token non include gli scope comandi richiesti
   (es. `vehicle_cmds` / `vehicle_charging_cmds`).
 
+### Retest dopo aggiornamento scope (2026-04-29)
+
+Aggiornamenti effettuati:
+
+- nuovo authorization flow con scope:
+  - `openid`
+  - `offline_access`
+  - `vehicle_device_data`
+  - `vehicle_cmds`
+  - `vehicle_charging_cmds`
+- nuovi token salvati in `.env` locale.
+
+Test reale ripetuto:
+
+- `py -m src.tesla_manual_command --set-amps 6 --i-understand-this-sends-real-command`
+
+Risultato:
+
+- risposta Tesla API ancora `403`, ma con causa diversa:
+  - `Tesla Vehicle Command Protocol required`
+- lettura read-only successiva: `charge_current_request=5`, `charge_amps=5` (nessun cambio a 6A).
+
+Interpretazione:
+
+- il blocco scope e risolto;
+- per questo veicolo/firmware serve passare dal flusso Vehicle Command Protocol
+  (comandi firmati con Virtual Key / Vehicle Command Proxy), non basta REST command legacy.
+
 ## Strategia anti-costo e rischio operativo
 
 - evitare polling continuo su endpoint live;

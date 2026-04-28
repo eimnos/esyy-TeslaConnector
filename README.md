@@ -4,13 +4,15 @@ Sistema locale per leggere i dati di un inverter Afore (via Solarman LSW5), stim
 
 ## Obiettivo del progetto
 
-Wave 1 e focalizzata su:
+Stato attuale (Wave 6 MVP):
 
-- lettura locale del collector Afore/Solarman in LAN;
-- scansione registri per costruire una mappa dati affidabile;
-- logica di surplus e decisioni in modalita dry-run (senza comandi reali).
+- acquisizione locale dati inverter Afore/Solarman;
+- mapping progressivo dei registri principali (PV/Grid);
+- logica controller in modalita dry-run (senza comandi Tesla);
+- scrittura best-effort su Supabase;
+- dashboard web Next.js read-only per monitoraggio dati.
 
-Le integrazioni Tesla API, Supabase e dashboard web saranno introdotte nelle wave successive.
+Le command Tesla reali restano volutamente disabilitate nelle wave correnti.
 
 ## Architettura (high level)
 
@@ -20,16 +22,21 @@ Afore Inverter + Solarman LSW5 (LAN)
                 v
 Controller locale Python (questa repo)
                 |
-                +--> Dry-run logic (Wave 1)
-                +--> Supabase (future waves)
-                +--> Tesla Fleet API (future waves)
-                +--> Web Dashboard Next.js/Vercel (future waves)
+                +--> Dry-run logic (attivo)
+                +--> Supabase (attivo, best-effort)
+                +--> Tesla Fleet API read-only (attivo)
+                +--> Tesla commands (future waves)
+                |
+                v
+Web Dashboard Next.js (web/, read-only)
 ```
 
 ## Requisiti
 
 - Python 3.11+
 - accesso LAN al collector (`192.168.1.20:8899`)
+- Node.js 20+ (per la dashboard web)
+- npm 10+
 
 ## Setup locale
 
@@ -51,6 +58,17 @@ pip install -r requirements.txt
 ```powershell
 Copy-Item .env.example .env
 ```
+
+4. (Wave 6) Setup dashboard web:
+
+```powershell
+Copy-Item web/.env.example web/.env.local
+cd web
+npm install
+npm run dev
+```
+
+La dashboard sara disponibile su `http://localhost:3000`.
 
 ## Esecuzione script
 
@@ -221,9 +239,39 @@ Verifica connessione Supabase:
 python -m src.check_supabase_connection --insert-test-sample
 ```
 
+## Wave 6 - Web Dashboard MVP
+
+Dashboard Next.js in `web/`, solo lettura da Supabase:
+
+- `/dashboard`: ultimo `inverter_sample`, ultima `controller_decision`, stato aggiornamento dati;
+- `/history`: ultime 100 righe da `inverter_samples` e `controller_decisions`.
+
+Variabili richieste (frontend):
+
+```text
+NEXT_PUBLIC_SUPABASE_URL=https://tygkqzhclglhfydtlxvi.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable key>
+```
+
+Avvio locale:
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+Note sicurezza frontend:
+
+- usare solo `NEXT_PUBLIC_SUPABASE_ANON_KEY`;
+- non usare mai `SUPABASE_SERVICE_ROLE_KEY` nel frontend;
+- dashboard read-only, nessun comando Tesla e nessuna modifica configurazioni.
+
+Deploy Vercel: vedi `docs/vercel_setup.md`.
+
 ## Sicurezza e limiti Wave 1
 
-- Tesla Fleet API non ancora attiva.
+- Tesla commands non attivi.
 - Nessun token/API secret hardcoded.
 - Nessun comando reale inviato alla vettura.
 - Tutta la logica di controllo resta locale.
@@ -242,7 +290,8 @@ esyy-TeslaConnector/
 |  |- afore_mapping.md
 |  |- tesla_api_strategy.md
 |  |- tesla_api_setup.md
-|  `- supabase_setup.md
+|  |- supabase_setup.md
+|  `- vercel_setup.md
 |- db/
 |  `- schema.sql
 |- src/
@@ -266,6 +315,12 @@ esyy-TeslaConnector/
 |  |- test_supabase_sink.py
 |  |- test_controller_loop_supabase.py
 |  `- test_check_supabase_connection.py
+`- web/
+   |- app/
+   |- lib/
+   |- .env.example
+   |- next.config.mjs
+   `- package.json
 `- data/
    `- .gitkeep
 ```

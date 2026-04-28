@@ -111,3 +111,27 @@ Esito:
 - scrittura reale Supabase confermata;
 - controller stabile durante il run;
 - comportamento best-effort invariato (non blocca il loop in caso errore Supabase).
+
+## 9. Validazione operativa aggiuntiva (Wave 5B)
+
+Data test: `2026-04-28` (sessione operativa corrente)
+
+Passi eseguiti:
+
+1. `python -m src.check_supabase_connection --insert-test-sample`
+2. `python -m src.controller_loop_dry_run --duration-minutes 5 --log-path data/controller_dry_run_log.csv`
+3. verifica record recenti su:
+   - `inverter_samples`
+   - `controller_decisions`
+
+Timestamp principali osservati (UTC da record Supabase):
+
+- `2026-04-26T13:46:49Z` circa: record `connection_test`
+- `2026-04-26T13:47:00Z` -> `2026-04-26T13:51:00Z`: cicli controller `1..5`
+
+Conferme:
+
+- `inverter_samples` popolata con righe `controller_loop_dry_run` e `connection_test`
+- `controller_decisions` popolata con azioni `NO_ACTION` e `CONNECTION_TEST`
+- run controller completato senza crash
+- flag `GRID_SIGN_UNKNOWN` presente nelle decisioni del run

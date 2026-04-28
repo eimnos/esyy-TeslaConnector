@@ -115,6 +115,34 @@ print(result)
 client.close()
 ```
 
+## Wave 10A - Manual Command Smoke Test
+
+Script manuale:
+
+- `src/tesla_manual_command.py`
+
+Vincoli di sicurezza applicati:
+
+- richiede sempre `--i-understand-this-sends-real-command`;
+- nessun comando automatico;
+- nessun wake-up (`TESLA_ALLOW_WAKE_UP` deve restare `false`);
+- comando bloccato se `grid_status` non e `confirmed`;
+- log obbligatorio su `data/tesla_command_calls_log.csv`.
+
+Esempio dry-run consigliato:
+
+```powershell
+py -m src.tesla_manual_command --set-amps 6 --dry-run --i-understand-this-sends-real-command
+```
+
+Esempi manuali (reali, solo quando sicuro):
+
+```powershell
+py -m src.tesla_manual_command --set-amps 6 --i-understand-this-sends-real-command
+py -m src.tesla_manual_command --start-charge --i-understand-this-sends-real-command
+py -m src.tesla_manual_command --stop-charge --i-understand-this-sends-real-command
+```
+
 ## Strategia anti-costo e rischio operativo
 
 - evitare polling continuo su endpoint live;

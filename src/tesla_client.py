@@ -40,6 +40,7 @@ class TeslaApiConfig:
     allow_wake_up: bool
     commands_enabled: bool
     request_timeout_seconds: float = 15.0
+    request_verify_tls: bool = True
 
 
 def _parse_bool(name: str, default: bool) -> bool:
@@ -95,6 +96,7 @@ def load_tesla_config(env_file: str | None = None) -> TeslaApiConfig:
         readonly_poll_seconds=_parse_int("TESLA_READONLY_POLL_SECONDS", 600, minimum=1),
         allow_wake_up=_parse_bool("TESLA_ALLOW_WAKE_UP", False),
         commands_enabled=_parse_bool("TESLA_COMMANDS_ENABLED", False),
+        request_verify_tls=_parse_bool("TESLA_API_VERIFY_TLS", True),
     )
     return config
 
@@ -179,6 +181,7 @@ class TeslaFleetClient:
                 headers=self._headers(),
                 params=params,
                 timeout=self.config.request_timeout_seconds,
+                verify=self.config.request_verify_tls,
             )
         except requests.RequestException as exc:
             elapsed = int((time.perf_counter() - started_at) * 1000)

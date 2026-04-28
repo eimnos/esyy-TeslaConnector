@@ -269,6 +269,7 @@ class TeslaCommandClient:
                 headers=self._headers(),
                 json=payload,
                 timeout=self.config.request_timeout_seconds,
+                verify=self.config.request_verify_tls,
             )
         except requests.RequestException as exc:
             error_text = f"Tesla command request failed: {exc}"

@@ -28,6 +28,7 @@ class FakeSession:
         headers: dict,
         json: dict,
         timeout: float,
+        verify: bool,
     ) -> FakeResponse:
         self.calls.append(
             {
@@ -36,6 +37,7 @@ class FakeSession:
                 "headers": headers,
                 "json": json,
                 "timeout": timeout,
+                "verify": verify,
             }
         )
         if not self.responses:

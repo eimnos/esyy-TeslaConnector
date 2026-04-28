@@ -49,6 +49,7 @@ TESLA_ACCESS_TOKEN=
 TESLA_REFRESH_TOKEN=
 TESLA_VEHICLE_ID=
 TESLA_API_BASE_URL=https://fleet-api.prd.eu.vn.cloud.tesla.com
+TESLA_API_VERIFY_TLS=true
 TESLA_READONLY_POLL_SECONDS=600
 TESLA_ALLOW_WAKE_UP=false
 TESLA_COMMANDS_ENABLED=false
@@ -59,6 +60,7 @@ Note sicurezza:
 - `TESLA_CLIENT_SECRET`, `TESLA_ACCESS_TOKEN` e `TESLA_REFRESH_TOKEN` non vanno mai committati.
 - `.env` deve restare untracked.
 - non usare `SUPABASE_SERVICE_ROLE_KEY` nel frontend web.
+- lasciare `TESLA_API_VERIFY_TLS=true` in produzione; impostarlo a `false` solo per test locali con proxy HTTPS self-signed.
 
 ## Read-only (attivo)
 

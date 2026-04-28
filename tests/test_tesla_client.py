@@ -21,7 +21,15 @@ class FakeSession:
         self.responses = responses
         self.calls: list[dict] = []
 
-    def request(self, method: str, url: str, headers: dict, params: dict | None, timeout: float):
+    def request(
+        self,
+        method: str,
+        url: str,
+        headers: dict,
+        params: dict | None,
+        timeout: float,
+        verify: bool,
+    ):
         self.calls.append(
             {
                 "method": method,
@@ -29,6 +37,7 @@ class FakeSession:
                 "headers": headers,
                 "params": params,
                 "timeout": timeout,
+                "verify": verify,
             }
         )
         if not self.responses:

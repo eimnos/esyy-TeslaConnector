@@ -137,6 +137,63 @@ Actions performed:
 - No real Tesla commands were sent during Wave 10C.
 - No automatic controller integration was enabled.
 
+## Wave 10D outcome (2026-04-29)
+
+Objective:
+
+- validate first signed command via local Vehicle Command Proxy in manual mode only.
+
+### Proxy startup
+
+- Built Tesla official `tesla-http-proxy` binary locally from:
+  - `github.com/teslamotors/vehicle-command`
+- Started proxy on:
+  - `https://localhost:4443`
+- Key material used:
+  - command signing key: local `private-key.pem`
+  - local TLS cert/key for localhost
+
+### Client configuration used for smoke test
+
+- temporary env override only for command process:
+  - `TESLA_COMMANDS_ENABLED=true`
+  - `TESLA_API_BASE_URL=https://localhost:4443`
+  - `TESLA_API_VERIFY_TLS=false` (local self-signed TLS only)
+- `TESLA_ALLOW_WAKE_UP=false` kept unchanged.
+- No controller loop active.
+
+### Command execution
+
+Dry-run executed first:
+
+- `py -m src.tesla_manual_command --set-amps 6 --dry-run --i-understand-this-sends-real-command`
+
+First real attempt returned `404` because proxy expects VIN in command path.
+Second real attempt with VIN succeeded:
+
+- `py -m src.tesla_manual_command --set-amps 6 --vehicle-id LRW3E7ES5PC901288 --i-understand-this-sends-real-command`
+- Result: HTTP `200`, `executed=true`.
+
+### Validation
+
+Read-only verification after command:
+
+- `py -m src.tesla_readonly_status --output-json data/tesla_status_sample.json`
+- observed:
+  - `charge_current_request=6`
+  - `charge_amps=6`
+
+Result:
+
+- signed command accepted and applied.
+
+### Safety confirmation
+
+- No `start_charge` or `stop_charge` command used.
+- Only `set_charging_amps=6` executed.
+- `TESLA_COMMANDS_ENABLED` remained `false` in `.env` after test window.
+- Proxy process stopped after test.
+
 ## Official references
 
 - Vehicle Commands: https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-commands

@@ -12,3 +12,8 @@ secrets/
 *.pem
 private-key.pem
 public-key.pem
+data/tesla_proxy_stdout.log
+data/tesla_proxy_stderr.log
+tools/tesla-command-proxy/bin/
+tools/tesla-command-proxy/vehicle-command/
+tools/tesla-command-proxy/config/

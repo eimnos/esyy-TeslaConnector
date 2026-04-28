@@ -99,6 +99,44 @@ Operational note:
 - no automatic controller integration;
 - no Tesla start/stop automation.
 
+## Wave 10C outcome (2026-04-29)
+
+### Key generation and Git safety
+
+- Generated locally:
+  - `tools/tesla-command-proxy/config/private-key.pem`
+  - `tools/tesla-command-proxy/config/public-key.pem`
+- `private-key.pem` is local-only and ignored by git (`*.pem`, `private-key.pem` in `.gitignore`).
+- Public key published in web app at:
+  - `web/public/.well-known/appspecific/com.tesla.3p.public-key.pem`
+
+### Vercel hosting verification
+
+Published URL:
+
+- `https://esyy-tesla-connector.vercel.app/.well-known/appspecific/com.tesla.3p.public-key.pem`
+
+Result:
+
+- HTTPS endpoint reachable and serving the expected PEM.
+
+### Partner registration and pairing
+
+Actions performed:
+
+1. Verified `public_key` endpoint for domain `esyy-tesla-connector.vercel.app`.
+2. Re-ran partner registration endpoint to align Tesla partner account with the hosted key.
+3. Opened pairing URL:
+   - `https://tesla.com/_ak/esyy-tesla-connector.vercel.app?vin=LRW3E7ES5PC901288`
+4. Verified pairing status via `fleet_status`:
+   - `key_paired_vins` contains `LRW3E7ES5PC901288`
+   - `unpaired_vins` is empty
+
+### Safety confirmation
+
+- No real Tesla commands were sent during Wave 10C.
+- No automatic controller integration was enabled.
+
 ## Official references
 
 - Vehicle Commands: https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-commands

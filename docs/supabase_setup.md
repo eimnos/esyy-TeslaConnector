@@ -17,9 +17,6 @@ Preparare Supabase per salvare:
 
 Lo script e idempotente (`create table if not exists`, `create index if not exists`), quindi puo essere rieseguito senza errori di duplicazione.
 
-Nota Wave 8B:
-- rieseguire `db/schema.sql` per aggiungere le nuove colonne Tesla (`vehicle_id`, `charge_current_request`, `charge_current_request_max`, `energy_added_kwh`) anche su progetti gia inizializzati.
-
 ## 2. Variabili ambiente
 
 Aggiorna `.env`:
@@ -88,6 +85,42 @@ Campi Tesla salvati:
 - `charge_limit_soc`
 - `odometer_km`
 - `energy_added_kwh`
+
+## 5C. Esito validazione finale Wave 8B
+
+Data test: `2026-04-29` (UTC)
+
+Passi eseguiti:
+
+1. `py -m src.tesla_sync_readonly --output-json data/tesla_status_sample.json`
+2. verifica query su `tesla_samples` ordinata `created_at desc` con `limit 10`
+3. controllo valorizzazione colonne Tesla richieste
+
+Esito:
+
+- sincronizzazione Tesla->Supabase completata senza warning schema mancanti;
+- ultime 10 righe `tesla_samples` complete sui campi:
+  - `vehicle_id`
+  - `battery_level`
+  - `charging_state`
+  - `charge_current_request`
+  - `charge_current_request_max`
+  - `charge_limit_soc`
+  - `odometer_km`
+  - `energy_added_kwh`
+
+Esempio record completo (estratto reale):
+
+```text
+vehicle_id=929871615538817
+battery_level=70
+charging_state=Charging
+charge_current_request=5
+charge_current_request_max=13
+charge_limit_soc=80
+odometer_km=35180.683365
+energy_added_kwh=6.04
+```
 
 ## 6. Troubleshooting
 

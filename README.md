@@ -4,13 +4,13 @@ Sistema locale per leggere i dati di un inverter Afore (via Solarman LSW5), stim
 
 ## Obiettivo del progetto
 
-Stato attuale (Wave 6 MVP):
+Stato attuale (Wave 7 MVP):
 
 - acquisizione locale dati inverter Afore/Solarman;
 - mapping progressivo dei registri principali (PV/Grid);
 - logica controller in modalita dry-run (senza comandi Tesla);
 - scrittura best-effort su Supabase;
-- dashboard web Next.js read-only per monitoraggio dati.
+- dashboard web Next.js read-only per monitoraggio dati live, storico e grafici.
 
 Le command Tesla reali restano volutamente disabilitate nelle wave correnti.
 
@@ -268,6 +268,33 @@ Note sicurezza frontend:
 - dashboard read-only, nessun comando Tesla e nessuna modifica configurazioni.
 
 Deploy Vercel: vedi `docs/vercel_setup.md`.
+
+## Wave 7 - Dashboard Enhancement MVP
+
+Migliorie operative introdotte:
+
+- refresh automatico dati configurabile (30s / 60s);
+- badge stato dati (`OK`, `STALE`, `ERROR`);
+- metriche live su `/dashboard`:
+  - PV Power attuale;
+  - Grid Import/Export attuale;
+  - Target amps calcolato;
+  - ultima decisione controller;
+  - timestamp ultimo aggiornamento;
+- grafici base su `/dashboard`:
+  - PV Power nel tempo;
+  - Grid Import/Export nel tempo;
+  - Target amps nel tempo;
+- filtri temporali su `/history`:
+  - ultimi 30 min / 1h / 6h / 24h;
+  - tabelle ordinate per `sample_timestamp` desc;
+  - stati `loading`, `empty`, `error`.
+
+Vincoli confermati:
+
+- solo lettura Supabase;
+- nessuna write da frontend;
+- nessun comando Tesla.
 
 ## Sicurezza e limiti Wave 1
 

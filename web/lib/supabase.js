@@ -38,13 +38,29 @@ async function queryLatest(tableName) {
   return data;
 }
 
-async function queryRecent(tableName, limitCount) {
+function getWindowStartIso(minutesBack) {
+  if (!Number.isFinite(minutesBack) || minutesBack <= 0) {
+    return null;
+  }
+  const nowMs = Date.now();
+  return new Date(nowMs - minutesBack * 60 * 1000).toISOString();
+}
+
+async function queryRecent(tableName, options = {}) {
+  const { limitCount = 100, minutesBack = null } = options;
   const supabase = createSupabaseReadClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from(tableName)
     .select("*")
     .order("sample_timestamp", { ascending: false })
     .limit(limitCount);
+
+  const startIso = getWindowStartIso(minutesBack);
+  if (startIso) {
+    query = query.gte("sample_timestamp", startIso);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(`${tableName} read failed: ${error.message}`);
@@ -61,10 +77,10 @@ export function getLatestControllerDecision() {
   return queryLatest("controller_decisions");
 }
 
-export function getRecentInverterSamples(limitCount = 100) {
-  return queryRecent("inverter_samples", limitCount);
+export function getRecentInverterSamples(limitCount = 100, minutesBack = null) {
+  return queryRecent("inverter_samples", { limitCount, minutesBack });
 }
 
-export function getRecentControllerDecisions(limitCount = 100) {
-  return queryRecent("controller_decisions", limitCount);
+export function getRecentControllerDecisions(limitCount = 100, minutesBack = null) {
+  return queryRecent("controller_decisions", { limitCount, minutesBack });
 }

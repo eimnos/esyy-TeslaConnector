@@ -1,5 +1,19 @@
 # Afore Register Mapping
 
+## Wave 9B Grid Confirmation (April 29, 2026)
+
+Sessione guidata eseguita con `src/grid_confirmation_session.py`.
+
+Output prodotti:
+
+- `data/grid_confirmation_report.csv` (locale, non versionato per `.gitignore`)
+- `docs/grid_confirmation.md`
+
+Esito:
+
+- `AFORE_GRID_SIGN_MODE` confermato su `import_positive`.
+- Interpretazione confermata: raw `> 0` = import, raw `< 0` = export.
+
 ## Wave 2B Confirmation (April 26, 2026)
 
 Conferma effettuata con scansioni `input registers` (`0..1000`) nei file:
@@ -16,7 +30,7 @@ Le scansioni sono state eseguite in sequenza con finestra di circa 2 minuti tra 
 | Registro | Nome ipotizzato | Scala | Unita | Valore app | Valore letto | Formula | Stato | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `560` | PV Power (candidato) | `x1` | `W` | n/d | baseline `3777`, load_on `3775`, load_off `3764` | `value` | partial | Registro stabile e plausibile per potenza FV, ma manca confronto istantaneo con app/display inverter. |
-| `524-525` | Grid Power import/export (candidato) | `x1` | `W` | n/d | baseline `-104`, load_on `-143`, load_off `-143` | `int32_signed=(reg524<<16)+reg525` | partial | Parsing signed32 coerente (valori con segno), ma test ON/OFF non ha mostrato transizione netta verso import. |
+| `524-525` | Grid Power import/export (candidato) | `x1` | `W` | manuale/app: import in Wave 9B | Wave 9B: `+254 .. +258` (import), Wave 3 storico: `-857 .. +274` | `int32_signed=(reg524<<16)+reg525` | confirmed | Segno confermato: `import_positive` (`+` import, `-` export). |
 | `528` | Load Power (candidato precedente) | `x1` | `W` | n/d | baseline `4474`, load_on `4443`, load_off `4477` | `value` | rejected | Con il test carico non emerge correlazione robusta con aumento di assorbimento. |
 | `538` | Load/PV dynamic metric (nuovo candidato) | `x1` | `W` | n/d | baseline `1074`, load_on `806`, load_off `938` | `value` | partial | Varia sensibilmente durante il test, ma la semantica esatta non e ancora certa. |
 | `540` | Load/PV dynamic metric (nuovo candidato) | `x1` | `W` | n/d | baseline `1075`, load_on `806`, load_off `938` | `value` | partial | Andamento quasi identico a `538`; possibile registro duplicato/canale correlato. |
@@ -31,8 +45,11 @@ Le scansioni sono state eseguite in sequenza con finestra di circa 2 minuti tra 
 - Parsing signed32 sperimentale su coppie richieste esportato in `data/diff_confirm_pairs.csv`.
 - Per la chiusura definitiva dei criteri Wave 2B servono ancora:
   - verifica istantanea dei valori con app inverter (soprattutto PV power);
-  - almeno un evento ON/OFF con delta netto e noto del carico in quel preciso istante;
-  - un caso con transizione import/export chiaramente osservabile per confermare il segno grid.
+  - almeno un evento ON/OFF con delta netto e noto del carico in quel preciso istante.
+
+Aggiornamento Wave 9B:
+
+- requisito segno grid chiuso: `confirmed` su `import_positive`.
 
 ## Wave 3 Dry-Run (30 minuti) - April 26, 2026
 

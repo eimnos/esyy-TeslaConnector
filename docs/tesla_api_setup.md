@@ -143,6 +143,31 @@ py -m src.tesla_manual_command --start-charge --i-understand-this-sends-real-com
 py -m src.tesla_manual_command --stop-charge --i-understand-this-sends-real-command
 ```
 
+### Esito validazione operativa Wave 10A (2026-04-29)
+
+Test eseguiti:
+
+1. comando reale manuale:
+   - `py -m src.tesla_manual_command --set-amps 6 --i-understand-this-sends-real-command`
+2. verifica read-only successiva:
+   - `py -m src.tesla_readonly_status --output-json data/tesla_status_sample.json`
+3. verifica log:
+   - `data/tesla_command_calls_log.csv`
+
+Risultato:
+
+- il comando `set_charge_amps` e stato inviato ma rifiutato da Tesla API con `403`:
+  - `Unauthorized missing scopes`
+- la lettura successiva ha mostrato `charge_current_request=5` e `charge_amps=5` (nessun cambio a 6A).
+- `TESLA_COMMANDS_ENABLED` risulta nuovamente `false` in `.env` dopo il test.
+- nessun `start_charge` / `stop_charge` eseguito in questa fase.
+
+Conclusione:
+
+- smoke test manuale eseguito correttamente dal lato procedura/guardrail;
+- comando reale non applicabile finche il token non include gli scope comandi richiesti
+  (es. `vehicle_cmds` / `vehicle_charging_cmds`).
+
 ## Strategia anti-costo e rischio operativo
 
 - evitare polling continuo su endpoint live;

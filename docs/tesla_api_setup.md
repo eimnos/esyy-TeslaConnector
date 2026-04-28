@@ -1,37 +1,44 @@
-# Tesla API Setup (Wave 4 - Read-Only)
+# Tesla API Setup (Wave 4 + Wave 9A Readiness)
 
-## Scopo Wave 4
+## Scopo
 
-In questa wave integriamo solo lettura stato veicolo via Tesla Fleet API.
+Stato attuale del progetto:
 
-Guardrail attivi:
+- Wave 4/8: integrazione Tesla solo in lettura (read-only).
+- Wave 9A: preparazione wrapper comandi, ma con protezioni hard e default bloccato.
 
-- nessun comando veicolo;
+## Guardrail attivi
+
+- nessun comando automatico dal controller;
 - nessun wake-up automatico;
-- token solo da `.env`;
+- token solo da `.env` locale;
 - polling cost-aware;
-- log chiamate API.
+- logging chiamate API;
+- comandi Tesla bloccati di default (`TESLA_COMMANDS_ENABLED=false`);
+- policy interna: comandi bloccati finche `Grid Power` non e `confirmed`.
 
-## Prerequisiti
+## Prerequisiti base Fleet API
 
-- account Tesla Developer;
-- una app registrata nel portale Tesla Developer;
-- credenziali OAuth e token validi.
-
-## Come creare app Tesla Developer (high level)
-
-1. Accedi al portale Tesla Developer con il tuo account.
-2. Crea una nuova app Fleet API.
-3. Configura i redirect URI richiesti dal flusso OAuth.
-4. Ottieni `client_id` e `client_secret`.
-5. Completa il flusso OAuth e recupera:
+1. Account Tesla Developer con MFA abilitata.
+2. Applicazione creata nel portale Tesla Developer.
+3. OAuth configurato (authorization code flow) con redirect URI validi.
+4. Token validi:
    - `access_token`
    - `refresh_token`
-6. Identifica il `vehicle_id` del veicolo target.
+5. `vehicle_id` del veicolo target.
 
-Nota:
-- non inserire segreti nel codice;
-- usare sempre variabili ambiente.
+## Prerequisiti Vehicle Commands / Virtual Key
+
+Per eseguire comandi veicolo servono prerequisiti aggiuntivi rispetto al solo read-only:
+
+1. Generare key pair EC `prime256v1` (public/private key).
+2. Ospitare la public key su:
+   - `https://<developer-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem`
+3. Chiamare `POST /api/1/partner_accounts` (register) con partner token, usando un dominio coerente con `allowed_origins`.
+4. Pairing della virtual key sul veicolo (deep link Tesla app):
+   - `https://tesla.com/_ak/<developer-domain>`
+5. Verificare stato pairing key e prerequisiti veicolo tramite endpoint `fleet_status`.
+6. Usare scope OAuth adeguati (almeno `vehicle_cmds` e `vehicle_charging_cmds` per i comandi di ricarica).
 
 ## Variabili `.env`
 
@@ -47,13 +54,13 @@ TESLA_ALLOW_WAKE_UP=false
 TESLA_COMMANDS_ENABLED=false
 ```
 
-Significato principale:
+Note sicurezza:
 
-- `TESLA_READONLY_POLL_SECONDS`: intervallo polling read-only (default 600s).
-- `TESLA_ALLOW_WAKE_UP=false`: blocca policy di risveglio automatico.
-- `TESLA_COMMANDS_ENABLED=false`: comandi disabilitati in questa wave.
+- `TESLA_CLIENT_SECRET`, `TESLA_ACCESS_TOKEN` e `TESLA_REFRESH_TOKEN` non vanno mai committati.
+- `.env` deve restare untracked.
+- non usare `SUPABASE_SERVICE_ROLE_KEY` nel frontend web.
 
-## Esecuzione read-only
+## Read-only (attivo)
 
 Snapshot singolo:
 
@@ -61,25 +68,68 @@ Snapshot singolo:
 python -m src.tesla_readonly_status --output-json data/tesla_status_sample.json
 ```
 
-Polling periodico (cost-aware):
+Polling periodico:
 
 ```powershell
 python -m src.tesla_readonly_status --watch --iterations 6
 ```
 
-Log chiamate API:
+Log chiamate API read-only:
 
 - `data/tesla_api_calls_log.csv`
 
-## Strategia anti-costo
+## Wave 9A - Command Readiness (safe mode)
 
-- evitare polling continuo;
-- evitare wake-up automatico;
-- usare polling 10-15 minuti quando idle;
-- usare polling 30-60 secondi solo durante carica (wave futura);
-- mantenere comandi disabilitati in questa wave.
+Modulo preparato:
 
-## Limiti Wave 4
+- `src/tesla_commands.py`
 
-- refresh token flow solo predisposto a livello config, non ancora automatizzato;
-- nessuna integrazione comandi (`set_amps`, `start`, `stop`, `wake`) nel codice.
+Wrapper disponibili (manual-only):
+
+- `set_charge_amps`
+- `start_charge`
+- `stop_charge`
+
+Regole hard del wrapper:
+
+1. rifiuta se `TESLA_COMMANDS_ENABLED=false`;
+2. richiede flag esplicito per singolo comando (`allow_command=True`);
+3. rifiuta se `grid_status` non e `confirmed` (es. `unknown` / `partial`);
+4. supporta dry-run (`dry_run=True`) senza chiamata API;
+5. logga ogni tentativo su `data/tesla_command_calls_log.csv`.
+
+Esempio (dry-run esplicito, nessuna chiamata reale):
+
+```python
+from src.tesla_commands import create_tesla_command_client, set_charge_amps
+
+client = create_tesla_command_client()
+result = set_charge_amps(
+    client,
+    8,
+    allow_command=True,
+    dry_run=True,
+    grid_status="confirmed",
+)
+print(result)
+client.close()
+```
+
+## Strategia anti-costo e rischio operativo
+
+- evitare polling continuo su endpoint live;
+- evitare `wake_up` salvo casi manuali e consapevoli;
+- verificare stato connettivita prima di richieste costose;
+- usare comandi solo quando strettamente necessario;
+- evitare retry aggressivi sui comandi (rischio azioni duplicate);
+- mantenere il controllo reale locale e con protezioni conservative.
+
+## Riferimenti ufficiali Tesla
+
+- Fleet API - What is Fleet API: https://developer.tesla.com/docs/fleet-api/getting-started/what-is-fleet-api
+- Partner Endpoints (`register`): https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints
+- Vehicle Commands: https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-commands
+- Virtual Keys overview: https://developer.tesla.com/docs/fleet-api/virtual-keys/overview
+- Virtual Keys developer guide: https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide
+- API Best Practices: https://developer.tesla.com/docs/fleet-api/getting-started/best-practices
+- Partner Tokens: https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens

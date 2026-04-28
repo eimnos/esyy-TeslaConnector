@@ -9,3 +9,6 @@ web/node_modules/
 web/.next/
 web/.env.local
 secrets/
+*.pem
+private-key.pem
+public-key.pem

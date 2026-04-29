@@ -31,6 +31,7 @@ export default function RootLayout({ children }) {
           <nav className="nav-links">
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/history">History</Link>
+            <Link href="/afore-candidates">Afore Candidates</Link>
           </nav>
         </header>
         <main className="main-content">{children}</main>

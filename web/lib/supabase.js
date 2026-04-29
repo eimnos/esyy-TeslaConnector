@@ -125,3 +125,11 @@ export function getLatestTeslaSample() {
 export function getRecentTeslaSamples(limitCount = 100, minutesBack = null) {
   return queryRecent("tesla_samples", { limitCount, minutesBack });
 }
+
+export function getLatestAforeCandidateSample() {
+  return queryLatest("afore_candidate_samples");
+}
+
+export function getRecentAforeCandidateSamples(limitCount = 300, minutesBack = null) {
+  return queryRecent("afore_candidate_samples", { limitCount, minutesBack });
+}

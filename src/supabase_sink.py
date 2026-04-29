@@ -31,6 +31,7 @@ class SupabaseSink:
     TABLE_TESLA_SAMPLES = "tesla_samples"
     TABLE_CONTROLLER_DECISIONS = "controller_decisions"
     TABLE_CONTROLLER_SETTINGS = "controller_settings"
+    TABLE_AFORE_CANDIDATE_SAMPLES = "afore_candidate_samples"
 
     def __init__(
         self,
@@ -138,6 +139,11 @@ class SupabaseSink:
         """Insert one row into `controller_settings`."""
 
         self._insert_row(self.TABLE_CONTROLLER_SETTINGS, row)
+
+    def insert_afore_candidate_sample(self, row: Mapping[str, Any]) -> None:
+        """Insert one row into `afore_candidate_samples`."""
+
+        self._insert_row(self.TABLE_AFORE_CANDIDATE_SAMPLES, row)
 
     def close(self) -> None:
         close_method = getattr(self.session, "close", None)

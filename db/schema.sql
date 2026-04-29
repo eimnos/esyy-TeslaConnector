@@ -84,3 +84,26 @@ create table if not exists public.controller_settings (
 
 create index if not exists idx_controller_settings_sample_timestamp
     on public.controller_settings (sample_timestamp);
+
+create table if not exists public.afore_candidate_samples (
+    id uuid primary key default gen_random_uuid(),
+    sample_timestamp timestamptz not null,
+    register_name text not null,
+    register_address text not null,
+    register_order text not null,
+    raw_high bigint,
+    raw_low bigint,
+    decoded_int32 bigint,
+    scale double precision not null default 1,
+    value_w double precision,
+    unit text not null default 'W',
+    source text not null default 'ha_candidate_sync',
+    notes text,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_afore_candidate_samples_sample_timestamp
+    on public.afore_candidate_samples (sample_timestamp);
+
+create index if not exists idx_afore_candidate_samples_register_name
+    on public.afore_candidate_samples (register_name);

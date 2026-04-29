@@ -338,6 +338,30 @@ Campi Tesla salvati (minimo):
 - `odometer_km`
 - `energy_added_kwh`
 
+## Wave 9F - HA/Afore Candidate Values Dashboard
+
+Obiettivo:
+
+- pubblicare in Supabase tutti i candidati registri HA/Afore (Grid/Load/PV + energy block opzionale);
+- visualizzarli in dashboard su pagina dedicata `/afore-candidates`;
+- confronto manuale con Solarman Smart per conferma mapping finale.
+
+Script di sync candidato:
+
+```powershell
+python -m src.ha_candidates_sync --watch --poll-seconds 60 --iterations 0
+```
+
+Note:
+
+- il sync resta read-only lato inverter;
+- nessun comando Tesla;
+- nessuna automazione riabilitata.
+
+Nuova tabella Supabase:
+
+- `afore_candidate_samples` (vedi `db/schema.sql`).
+
 ## Sicurezza e limiti Wave 1
 
 - Tesla commands non attivi.

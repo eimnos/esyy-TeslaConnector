@@ -74,6 +74,17 @@ def test_insert_controller_decision_uses_target_table() -> None:
     assert call["url"] == "https://example.supabase.co/rest/v1/controller_decisions"
 
 
+def test_insert_afore_candidate_sample_uses_target_table() -> None:
+    session = FakeSession(FakeResponse(status_code=201))
+    sink = make_sink(session)
+
+    sink.insert_afore_candidate_sample({"sample_timestamp": "2026-01-01T00:00:00Z"})
+
+    assert len(session.calls) == 1
+    call = session.calls[0]
+    assert call["url"] == "https://example.supabase.co/rest/v1/afore_candidate_samples"
+
+
 def test_insert_row_raises_on_http_error() -> None:
     session = FakeSession(FakeResponse(status_code=400, text="bad request"))
     sink = make_sink(session)

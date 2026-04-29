@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Area,
   AreaChart,
@@ -359,6 +360,9 @@ export default function DashboardPage() {
           <span className="pill pill-warn">{GRID_RELIABILITY_LABEL}</span>
         </div>
         <p className="status-subtext">{GRID_RELIABILITY_DETAIL}</p>
+        <p className="status-meta">
+          Candidate remapping view: <Link href="/afore-candidates">/afore-candidates</Link>
+        </p>
       </article>
 
       <article className="status-card controls-card">

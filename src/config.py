@@ -22,6 +22,7 @@ class AppConfig:
     tesla_max_amps: int
     grid_export_start_w: float
     grid_export_stop_w: float
+    grid_automation_enabled: bool
     afore_pv_power_register: int
     afore_grid_power_register_high: int
     afore_grid_power_register_low: int
@@ -109,6 +110,7 @@ def load_config(env_file: str | None = None) -> AppConfig:
         tesla_max_amps=_parse_int("TESLA_MAX_AMPS", 16, minimum=1),
         grid_export_start_w=_parse_float("GRID_EXPORT_START_W", 1600.0, minimum=0.0),
         grid_export_stop_w=_parse_float("GRID_EXPORT_STOP_W", 900.0, minimum=0.0),
+        grid_automation_enabled=_parse_bool("GRID_AUTOMATION_ENABLED", False),
         afore_pv_power_register=_parse_int("AFORE_PV_POWER_REGISTER", 560, minimum=0),
         afore_grid_power_register_high=_parse_int(
             "AFORE_GRID_POWER_REGISTER_HIGH", 524, minimum=0

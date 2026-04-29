@@ -19,6 +19,9 @@ const REFRESH_OPTIONS_SECONDS = [30, 60];
 const DEFAULT_RANGE = 60;
 const DEFAULT_REFRESH = 60;
 const TABLE_LIMIT = 100;
+const GRID_RELIABILITY_LABEL = "UNCONFIRMED / UNRELIABLE";
+const GRID_RELIABILITY_DETAIL =
+  "Wave 9C: Grid values are shown for diagnostics only and are not valid for automation decisions.";
 
 function formatNumber(value, digits = 2) {
   if (value === null || value === undefined) {
@@ -228,6 +231,14 @@ export default function HistoryPage() {
 
       <article className="status-card controls-card">
         <div className="status-header">
+          <h2>Grid Reliability</h2>
+          <span className="pill pill-warn">{GRID_RELIABILITY_LABEL}</span>
+        </div>
+        <p className="status-subtext">{GRID_RELIABILITY_DETAIL}</p>
+      </article>
+
+      <article className="status-card controls-card">
+        <div className="status-header">
           <h2>History Diagnostics</h2>
           <span className={`pill ${errorMessage ? "pill-error" : "pill-ok"}`}>
             {errorMessage ? "QUERY ERROR" : "QUERY OK"}
@@ -306,9 +317,9 @@ export default function HistoryPage() {
                 <tr>
                   <th>sample_timestamp</th>
                   <th>pv_power_w</th>
-                  <th>grid_raw_w</th>
-                  <th>grid_import_w</th>
-                  <th>grid_export_w</th>
+                  <th>grid_raw_w (unreliable)</th>
+                  <th>grid_import_w (unreliable)</th>
+                  <th>grid_export_w (unreliable)</th>
                   <th>source</th>
                 </tr>
               </thead>

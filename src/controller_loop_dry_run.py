@@ -304,6 +304,11 @@ def main() -> int:
             "WARNING: AFORE_GRID_SIGN_MODE is 'unknown'. "
             "Controller uses provisional assumption 'import_positive'."
         )
+    if not config.grid_automation_enabled:
+        print(
+            "WARNING: GRID_AUTOMATION_ENABLED=false. "
+            "Automatic decisions based on grid_export_w are blocked."
+        )
     if supabase_state == "disabled":
         print("Supabase sink: disabled (SUPABASE_ENABLED=false).")
     elif supabase_state == "missing_config":
@@ -333,23 +338,34 @@ def main() -> int:
                     max_amps=settings.max_amps,
                     grid_voltage=settings.grid_voltage,
                 )
-                action = decide_charge_action(
-                    export_w=snapshot.grid_export_w,
-                    current_amps=current_amps,
-                    settings=settings,
-                )
-
                 amps_before = current_amps
-                if action in {"START_CHARGE", "SET_AMPS"}:
-                    current_amps = target_amps
-                elif action == "STOP_CHARGE":
-                    current_amps = 0
+                note_parts: list[str] = []
+
+                if config.grid_automation_enabled:
+                    action = decide_charge_action(
+                        export_w=snapshot.grid_export_w,
+                        current_amps=current_amps,
+                        settings=settings,
+                    )
+                    if action in {"START_CHARGE", "SET_AMPS"}:
+                        current_amps = target_amps
+                    elif action == "STOP_CHARGE":
+                        current_amps = 0
+                else:
+                    action = "NO_ACTION"
+                    note_parts.extend(
+                        [
+                            "GRID_UNRELIABLE_BLOCKED",
+                            "GRID_AUTOMATION_DISABLED",
+                        ]
+                    )
 
                 if snapshot.grid_sign_unknown:
-                    note = (
-                        "GRID_SIGN_UNKNOWN;"
+                    note_parts.append("GRID_SIGN_UNKNOWN")
+                    note_parts.append(
                         f"ASSUMED_{snapshot.grid_sign_assumed_mode.upper()}"
                     )
+                note = ";".join(note_parts)
 
                 print(
                     f"[cycle {cycle:04d}] "

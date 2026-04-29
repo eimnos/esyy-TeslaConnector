@@ -23,6 +23,7 @@ def make_config(
         tesla_max_amps=16,
         grid_export_start_w=1600.0,
         grid_export_stop_w=900.0,
+        grid_automation_enabled=False,
         afore_pv_power_register=560,
         afore_grid_power_register_high=524,
         afore_grid_power_register_low=525,

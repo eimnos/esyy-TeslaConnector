@@ -32,6 +32,9 @@ const CHART_WINDOW_OPTIONS = [
 const DEFAULT_REFRESH_SECONDS = 60;
 const DEFAULT_WINDOW_MINUTES = 360;
 const CHART_LIMIT = 400;
+const GRID_RELIABILITY_LABEL = "UNCONFIRMED / UNRELIABLE";
+const GRID_RELIABILITY_DETAIL =
+  "Wave 9C: Grid Import/Export from Afore/Solarman is diagnostic only and not valid for automation.";
 
 function asNumber(value) {
   if (value === null || value === undefined) {
@@ -352,6 +355,14 @@ export default function DashboardPage() {
 
       <article className="status-card controls-card">
         <div className="status-header">
+          <h2>Grid Reliability</h2>
+          <span className="pill pill-warn">{GRID_RELIABILITY_LABEL}</span>
+        </div>
+        <p className="status-subtext">{GRID_RELIABILITY_DETAIL}</p>
+      </article>
+
+      <article className="status-card controls-card">
+        <div className="status-header">
           <h2>Dashboard Diagnostics</h2>
           <span className={`pill ${errorMessage ? "pill-error" : "pill-ok"}`}>
             {errorMessage ? "QUERY ERROR" : "QUERY OK"}
@@ -399,11 +410,11 @@ export default function DashboardPage() {
           <p className={metricValueClass(pvValue)}>{pvValue}</p>
         </article>
         <article className="metric-card">
-          <h3>Grid Import</h3>
+          <h3>Grid Import (unreliable)</h3>
           <p className={metricValueClass(gridImportValue)}>{gridImportValue}</p>
         </article>
         <article className="metric-card">
-          <h3>Grid Export</h3>
+          <h3>Grid Export (unreliable)</h3>
           <p className={metricValueClass(gridExportValue)}>{gridExportValue}</p>
         </article>
         <article className="metric-card">
@@ -457,11 +468,11 @@ export default function DashboardPage() {
               <dd>{formatNumber(inverterSample?.grid_power_raw_w, "W")}</dd>
             </div>
             <div>
-              <dt>Grid import</dt>
+              <dt>Grid import (unreliable)</dt>
               <dd>{formatNumber(inverterSample?.grid_import_w, "W")}</dd>
             </div>
             <div>
-              <dt>Grid export</dt>
+              <dt>Grid export (unreliable)</dt>
               <dd>{formatNumber(inverterSample?.grid_export_w, "W")}</dd>
             </div>
             <div>
@@ -487,7 +498,7 @@ export default function DashboardPage() {
               <dd>{controllerDecision?.action ?? "-"}</dd>
             </div>
             <div>
-              <dt>Export</dt>
+              <dt>Export (unreliable)</dt>
               <dd>{formatNumber(controllerDecision?.export_w, "W")}</dd>
             </div>
             <div>
@@ -576,7 +587,7 @@ export default function DashboardPage() {
         </article>
 
         <article className="chart-card">
-          <h2>Grid Import / Export Over Time</h2>
+          <h2>Grid Import / Export Over Time (unreliable)</h2>
           {hasGridSeries ? (
             <div className="chart-body">
               <ResponsiveContainer width="100%" height={280}>
@@ -593,7 +604,7 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="chart-empty">No grid chart data in selected range.</p>
+            <p className="chart-empty">No grid chart data in selected range (diagnostic feed only).</p>
           )}
         </article>
 

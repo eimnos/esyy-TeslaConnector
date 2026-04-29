@@ -14,6 +14,14 @@ Stato attuale (Wave 7 MVP):
 
 Le command Tesla reali restano volutamente disabilitate nelle wave correnti.
 
+## Stato operativo attuale (April 29, 2026)
+
+- Grid Power dal collector Afore/Solarman: **non identificato in modo affidabile**.
+- Registro `524-525`: declassato a `rejected/partial` (non segue carico EV reale > 4 kW).
+- Automazione Tesla basata su surplus FV: **bloccata**.
+- Sistema attivo in modalita **monitoraggio/dry-run** (PV/Tesla/storico).
+- In dashboard, Grid Import/Export va considerato **unconfirmed/unreliable**.
+
 ## Architettura (high level)
 
 ```text
@@ -174,6 +182,7 @@ AFORE_GRID_POWER_REGISTER_LOW=525
 AFORE_GRID_POWER_SCALE=1
 AFORE_PV_POWER_SCALE=1
 AFORE_GRID_SIGN_MODE=unknown
+GRID_AUTOMATION_ENABLED=false
 ```
 
 Esecuzione loop dry-run (30 minuti, senza Tesla API):
@@ -181,6 +190,11 @@ Esecuzione loop dry-run (30 minuti, senza Tesla API):
 ```powershell
 python -m src.controller_loop_dry_run --duration-minutes 30 --log-path data/controller_dry_run_log.csv
 ```
+
+Nota Wave 9C:
+
+- con `GRID_AUTOMATION_ENABLED=false` il loop continua a leggere/salvare dati, ma non produce azioni automatiche basate su `grid_export_w`.
+- finche Grid Power resta non confermato, mantenere il sistema in monitoraggio.
 
 Smoke test rapido (1 ciclo):
 

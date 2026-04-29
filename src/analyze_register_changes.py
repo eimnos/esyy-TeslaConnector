@@ -7,6 +7,7 @@ import csv
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +47,33 @@ class SignedPairDelta:
     @property
     def abs_delta(self) -> int:
         return abs(self.delta)
+
+
+@dataclass(frozen=True, slots=True)
+class GridCandidate:
+    """Candidate register/pair that might represent instantaneous grid power."""
+
+    representation: str
+    start_register: int
+    end_register: int
+    scale_label: str
+    scale_factor: float
+    target_w: float
+    left_raw_value: int
+    right_raw_value: int
+    left_scaled_w: float
+    right_scaled_w: float
+    delta_scaled_w: float
+    abs_delta_scaled_w: float
+    match_error_w: float
+    match_error_ratio: float
+    is_tracking_candidate: bool
+
+    @property
+    def register_label(self) -> str:
+        if self.start_register == self.end_register:
+            return str(self.start_register)
+        return f"{self.start_register}-{self.end_register}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,6 +121,54 @@ def parse_args() -> argparse.Namespace:
         "--pairs-output",
         default=None,
         help="Optional CSV output path for signed int32 pair deltas.",
+    )
+    parser.add_argument(
+        "--find-grid-candidates",
+        action="store_true",
+        help="Run heuristic search for instantaneous grid-power candidate registers.",
+    )
+    parser.add_argument(
+        "--candidate-targets",
+        default="4700,470,47,47000",
+        help=(
+            "Comma-separated target watt values used for candidate matching "
+            "(default: 4700,470,47,47000)."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-max-error-ratio",
+        type=float,
+        default=0.25,
+        help=(
+            "Maximum relative error allowed for target matching "
+            "(default: 0.25 = 25%)."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-min-abs-delta-w",
+        type=float,
+        default=0.0,
+        help="Ignore candidates whose |delta| in W is below this threshold.",
+    )
+    parser.add_argument(
+        "--candidate-track-threshold-w",
+        type=float,
+        default=500.0,
+        help=(
+            "Threshold used only to flag whether candidate appears to track large load changes "
+            "(default: 500W)."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-limit",
+        type=int,
+        default=200,
+        help="Maximum number of candidate rows to keep/save (default: 200).",
+    )
+    parser.add_argument(
+        "--candidate-output",
+        default=None,
+        help="Optional CSV output path for grid candidate analysis.",
     )
     return parser.parse_args()
 
@@ -175,6 +251,198 @@ def decode_signed_int32(high_word: float, low_word: float) -> int:
     if value & 0x80000000:
         value -= 0x100000000
     return value
+
+
+def decode_unsigned_int32(high_word: float, low_word: float) -> int:
+    high = int(high_word) & 0xFFFF
+    low = int(low_word) & 0xFFFF
+    return (high << 16) | low
+
+
+def decode_signed_int16(word: float) -> int:
+    value = int(word) & 0xFFFF
+    if value & 0x8000:
+        value -= 0x10000
+    return value
+
+
+def decode_unsigned_int16(word: float) -> int:
+    return int(word) & 0xFFFF
+
+
+def parse_candidate_targets(raw_targets: str) -> list[float]:
+    values: list[float] = []
+    for chunk in raw_targets.split(","):
+        token = chunk.strip()
+        if not token:
+            continue
+        try:
+            value = float(token)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid candidate target {token!r}. Use numeric values separated by commas."
+            ) from exc
+        if value <= 0:
+            raise ValueError(f"Invalid candidate target {token!r}. Value must be > 0.")
+        values.append(value)
+
+    if not values:
+        raise ValueError("No valid candidate targets provided.")
+    return values
+
+
+def _iter_decoded_candidates(
+    left: dict[int, float], right: dict[int, float]
+) -> Iterable[tuple[str, int, int, int, int]]:
+    shared = sorted(left.keys() & right.keys())
+    shared_set = set(shared)
+
+    for register in shared:
+        left_word = left[register]
+        right_word = right[register]
+        yield (
+            "uint16",
+            register,
+            register,
+            decode_unsigned_int16(left_word),
+            decode_unsigned_int16(right_word),
+        )
+        yield (
+            "int16",
+            register,
+            register,
+            decode_signed_int16(left_word),
+            decode_signed_int16(right_word),
+        )
+
+    for register in shared:
+        next_register = register + 1
+        if next_register not in shared_set:
+            continue
+
+        left_first = left[register]
+        left_second = left[next_register]
+        right_first = right[register]
+        right_second = right[next_register]
+
+        # Big-endian: register is high word, next register is low word.
+        yield (
+            "uint32_be",
+            register,
+            next_register,
+            decode_unsigned_int32(left_first, left_second),
+            decode_unsigned_int32(right_first, right_second),
+        )
+        yield (
+            "int32_be",
+            register,
+            next_register,
+            decode_signed_int32(left_first, left_second),
+            decode_signed_int32(right_first, right_second),
+        )
+
+        # Little-endian: register is low word, next register is high word.
+        yield (
+            "uint32_le",
+            register,
+            next_register,
+            decode_unsigned_int32(left_second, left_first),
+            decode_unsigned_int32(right_second, right_first),
+        )
+        yield (
+            "int32_le",
+            register,
+            next_register,
+            decode_signed_int32(left_second, left_first),
+            decode_signed_int32(right_second, right_first),
+        )
+
+
+def find_grid_candidates(
+    left: dict[int, float],
+    right: dict[int, float],
+    *,
+    targets_w: list[float],
+    max_error_ratio: float,
+    min_abs_delta_w: float,
+    track_threshold_w: float,
+    limit: int,
+) -> list[GridCandidate]:
+    if max_error_ratio < 0:
+        raise ValueError("max_error_ratio must be >= 0")
+    if min_abs_delta_w < 0:
+        raise ValueError("min_abs_delta_w must be >= 0")
+    if track_threshold_w < 0:
+        raise ValueError("track_threshold_w must be >= 0")
+    if limit < 0:
+        raise ValueError("limit must be >= 0")
+
+    scale_options = [
+        ("x1", 1.0),
+        ("x10", 10.0),
+        ("x100", 100.0),
+        ("/10", 0.1),
+        ("/100", 0.01),
+    ]
+
+    rows: list[GridCandidate] = []
+    for representation, start, end, left_raw, right_raw in _iter_decoded_candidates(left, right):
+        for scale_label, scale_factor in scale_options:
+            left_scaled = float(left_raw) * scale_factor
+            right_scaled = float(right_raw) * scale_factor
+            delta_scaled = right_scaled - left_scaled
+            abs_delta_scaled = abs(delta_scaled)
+            if abs_delta_scaled < min_abs_delta_w:
+                continue
+
+            best_target = targets_w[0]
+            best_error_w = abs(abs(right_scaled) - best_target)
+            best_ratio = best_error_w / best_target
+            for target in targets_w[1:]:
+                error_w = abs(abs(right_scaled) - target)
+                ratio = error_w / target
+                if ratio < best_ratio:
+                    best_target = target
+                    best_error_w = error_w
+                    best_ratio = ratio
+
+            if best_ratio > max_error_ratio:
+                continue
+
+            rows.append(
+                GridCandidate(
+                    representation=representation,
+                    start_register=start,
+                    end_register=end,
+                    scale_label=scale_label,
+                    scale_factor=scale_factor,
+                    target_w=best_target,
+                    left_raw_value=left_raw,
+                    right_raw_value=right_raw,
+                    left_scaled_w=left_scaled,
+                    right_scaled_w=right_scaled,
+                    delta_scaled_w=delta_scaled,
+                    abs_delta_scaled_w=abs_delta_scaled,
+                    match_error_w=best_error_w,
+                    match_error_ratio=best_ratio,
+                    is_tracking_candidate=abs_delta_scaled >= track_threshold_w,
+                )
+            )
+
+    rows.sort(
+        key=lambda item: (
+            0 if item.is_tracking_candidate else 1,
+            item.match_error_ratio,
+            -item.abs_delta_scaled_w,
+            item.start_register,
+            item.end_register,
+            item.representation,
+            item.scale_label,
+        )
+    )
+    if limit == 0:
+        return rows
+    return rows[:limit]
 
 
 def compare_signed32_pairs(
@@ -309,6 +577,83 @@ def save_pair_output(rows: list[SignedPairDelta], output_path: Path) -> None:
             )
 
 
+def print_candidate_table(
+    rows: list[GridCandidate], left_label: str, right_label: str, limit: int
+) -> None:
+    shown = rows if limit <= 0 else rows[:limit]
+    left_header = left_label[:12]
+    right_header = right_label[:12]
+
+    print("\nGrid-power heuristic candidates")
+    print(
+        f"{'Reg':>9}  {'Type':>9}  {'Scale':>5}  {'TargetW':>8}  "
+        f"{left_header:>12}  {right_header:>12}  {'DeltaW':>10}  {'Err%':>7}  {'Track':>6}"
+    )
+    print("-" * 100)
+    for item in shown:
+        print(
+            f"{item.register_label:>9}  "
+            f"{item.representation:>9}  "
+            f"{item.scale_label:>5}  "
+            f"{item.target_w:>8.1f}  "
+            f"{item.left_scaled_w:>12.1f}  "
+            f"{item.right_scaled_w:>12.1f}  "
+            f"{item.delta_scaled_w:>10.1f}  "
+            f"{item.match_error_ratio * 100.0:>6.1f}%  "
+            f"{'yes' if item.is_tracking_candidate else 'no':>6}"
+        )
+
+    if limit > 0 and len(rows) > limit:
+        print(f"... {len(rows) - limit} additional candidates not shown")
+
+
+def save_candidate_output(rows: list[GridCandidate], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(
+            [
+                "register_label",
+                "start_register",
+                "end_register",
+                "representation",
+                "scale_label",
+                "scale_factor",
+                "target_w",
+                "left_raw_value",
+                "right_raw_value",
+                "left_scaled_w",
+                "right_scaled_w",
+                "delta_scaled_w",
+                "abs_delta_scaled_w",
+                "match_error_w",
+                "match_error_ratio",
+                "is_tracking_candidate",
+            ]
+        )
+        for item in rows:
+            writer.writerow(
+                [
+                    item.register_label,
+                    item.start_register,
+                    item.end_register,
+                    item.representation,
+                    item.scale_label,
+                    item.scale_factor,
+                    item.target_w,
+                    item.left_raw_value,
+                    item.right_raw_value,
+                    item.left_scaled_w,
+                    item.right_scaled_w,
+                    item.delta_scaled_w,
+                    item.abs_delta_scaled_w,
+                    item.match_error_w,
+                    item.match_error_ratio,
+                    str(item.is_tracking_candidate).lower(),
+                ]
+            )
+
+
 def main() -> int:
     args = parse_args()
     if args.min_abs_delta < 0:
@@ -316,6 +661,18 @@ def main() -> int:
         return 2
     if args.limit < 0:
         print("--limit must be >= 0", file=sys.stderr)
+        return 2
+    if args.candidate_max_error_ratio < 0:
+        print("--candidate-max-error-ratio must be >= 0", file=sys.stderr)
+        return 2
+    if args.candidate_min_abs_delta_w < 0:
+        print("--candidate-min-abs-delta-w must be >= 0", file=sys.stderr)
+        return 2
+    if args.candidate_track_threshold_w < 0:
+        print("--candidate-track-threshold-w must be >= 0", file=sys.stderr)
+        return 2
+    if args.candidate_limit < 0:
+        print("--candidate-limit must be >= 0", file=sys.stderr)
         return 2
 
     left_path = Path(args.left_csv)
@@ -367,6 +724,37 @@ def main() -> int:
                 pairs_output_path = Path(args.pairs_output)
                 save_pair_output(pair_rows, pairs_output_path)
                 print(f"Saved signed32 pair report to: {pairs_output_path}")
+
+    if args.find_grid_candidates or args.candidate_output:
+        try:
+            targets = parse_candidate_targets(args.candidate_targets)
+            candidate_rows = find_grid_candidates(
+                left_values,
+                right_values,
+                targets_w=targets,
+                max_error_ratio=args.candidate_max_error_ratio,
+                min_abs_delta_w=args.candidate_min_abs_delta_w,
+                track_threshold_w=args.candidate_track_threshold_w,
+                limit=args.candidate_limit,
+            )
+        except ValueError as exc:
+            print(f"Input error: {exc}", file=sys.stderr)
+            return 2
+
+        if not candidate_rows:
+            print("\nGrid-power heuristic candidates: no rows found with current filters.")
+        else:
+            print_candidate_table(
+                candidate_rows,
+                left_label=left_label,
+                right_label=right_label,
+                limit=args.limit,
+            )
+
+        if args.candidate_output:
+            candidate_output_path = Path(args.candidate_output)
+            save_candidate_output(candidate_rows, candidate_output_path)
+            print(f"Saved grid candidate report to: {candidate_output_path}")
 
     return 0
 

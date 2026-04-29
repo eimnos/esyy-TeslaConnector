@@ -14,6 +14,7 @@ import {
   YAxis
 } from "recharts";
 import {
+  getSupabaseEnvStatus,
   getLatestControllerDecision,
   getLatestInverterSample,
   getLatestTeslaSample,
@@ -120,6 +121,7 @@ function metricValueClass(value) {
 }
 
 export default function DashboardPage() {
+  const envStatus = useMemo(() => getSupabaseEnvStatus(), []);
   const [refreshSeconds, setRefreshSeconds] = useState(DEFAULT_REFRESH_SECONDS);
   const [windowMinutes, setWindowMinutes] = useState(DEFAULT_WINDOW_MINUTES);
   const [inverterSample, setInverterSample] = useState(null);
@@ -131,6 +133,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [queryStatus, setQueryStatus] = useState({
+    latestInverter: "idle",
+    latestDecision: "idle",
+    latestTesla: "idle",
+    historyInverter: "idle",
+    historyDecision: "idle",
+    historyTesla: "idle"
+  });
   const [lastPollAt, setLastPollAt] = useState(null);
 
   const fetchData = useCallback(
@@ -141,38 +151,63 @@ export default function DashboardPage() {
         setLoading(true);
       }
 
-      try {
-        const [
-          latestInverter,
-          latestDecision,
-          latestTesla,
-          inverterHistory,
-          decisionHistory,
-          teslaHistory
-        ] = await Promise.all([
-          getLatestInverterSample(),
-          getLatestControllerDecision(),
-          getLatestTeslaSample(),
-          getRecentInverterSamples(CHART_LIMIT, windowMinutes),
-          getRecentControllerDecisions(CHART_LIMIT, windowMinutes),
-          getRecentTeslaSamples(CHART_LIMIT, windowMinutes)
-        ]);
+      const resultKeys = [
+        "latestInverter",
+        "latestDecision",
+        "latestTesla",
+        "historyInverter",
+        "historyDecision",
+        "historyTesla"
+      ];
+      const settled = await Promise.allSettled([
+        getLatestInverterSample(),
+        getLatestControllerDecision(),
+        getLatestTeslaSample(),
+        getRecentInverterSamples(CHART_LIMIT, windowMinutes),
+        getRecentControllerDecisions(CHART_LIMIT, windowMinutes),
+        getRecentTeslaSamples(CHART_LIMIT, windowMinutes)
+      ]);
 
-        setInverterSample(latestInverter);
-        setControllerDecision(latestDecision);
-        setTeslaSample(latestTesla);
-        setInverterRows(Array.isArray(inverterHistory) ? inverterHistory : []);
-        setDecisionRows(Array.isArray(decisionHistory) ? decisionHistory : []);
-        setTeslaRows(Array.isArray(teslaHistory) ? teslaHistory : []);
-        setErrorMessage(null);
-      } catch (error) {
-        const readable = error instanceof Error ? error.message : "Unknown error while loading data.";
-        setErrorMessage(readable);
-      } finally {
-        setLastPollAt(new Date().toISOString());
-        setLoading(false);
-        setRefreshing(false);
+      const nextStatus = {};
+      const failures = [];
+      settled.forEach((result, index) => {
+        const key = resultKeys[index];
+        if (result.status === "fulfilled") {
+          nextStatus[key] = "ok";
+        } else {
+          nextStatus[key] = "error";
+          const readable =
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason || "Unknown query error");
+          failures.push(`${key}: ${readable}`);
+        }
+      });
+      setQueryStatus(nextStatus);
+
+      if (settled[0].status === "fulfilled") {
+        setInverterSample(settled[0].value);
       }
+      if (settled[1].status === "fulfilled") {
+        setControllerDecision(settled[1].value);
+      }
+      if (settled[2].status === "fulfilled") {
+        setTeslaSample(settled[2].value);
+      }
+      if (settled[3].status === "fulfilled") {
+        setInverterRows(Array.isArray(settled[3].value) ? settled[3].value : []);
+      }
+      if (settled[4].status === "fulfilled") {
+        setDecisionRows(Array.isArray(settled[4].value) ? settled[4].value : []);
+      }
+      if (settled[5].status === "fulfilled") {
+        setTeslaRows(Array.isArray(settled[5].value) ? settled[5].value : []);
+      }
+
+      setErrorMessage(failures.length > 0 ? failures.join(" | ") : null);
+      setLastPollAt(new Date().toISOString());
+      setLoading(false);
+      setRefreshing(false);
     },
     [windowMinutes]
   );
@@ -254,6 +289,10 @@ export default function DashboardPage() {
   const hasTeslaSocSeries = teslaSocSeries.some(
     (item) => item.soc !== null || item.requested !== null
   );
+  const latestInverterCreatedAt = inverterRows[0]?.created_at ?? inverterSample?.created_at ?? null;
+  const latestDecisionCreatedAt =
+    decisionRows[0]?.created_at ?? controllerDecision?.created_at ?? null;
+  const latestTeslaCreatedAt = teslaRows[0]?.created_at ?? teslaSample?.created_at ?? null;
 
   return (
     <section className="page-grid">
@@ -309,6 +348,49 @@ export default function DashboardPage() {
         <p className="status-meta">
           {loading ? "Loading data..." : `Last poll: ${formatTimestamp(lastPollAt)}`}
         </p>
+      </article>
+
+      <article className="status-card controls-card">
+        <div className="status-header">
+          <h2>Dashboard Diagnostics</h2>
+          <span className={`pill ${errorMessage ? "pill-error" : "pill-ok"}`}>
+            {errorMessage ? "QUERY ERROR" : "QUERY OK"}
+          </span>
+        </div>
+        <div className="diagnostic-grid">
+          <p>
+            <strong>Env URL present:</strong> {envStatus.urlPresent ? "yes" : "no"}
+          </p>
+          <p>
+            <strong>Env anon key present:</strong> {envStatus.anonKeyPresent ? "yes" : "no"}
+          </p>
+          <p>
+            <strong>Env host:</strong> {envStatus.urlHost ?? "-"}
+          </p>
+          <p>
+            <strong>Inverter records:</strong> {inverterRows.length}
+          </p>
+          <p>
+            <strong>Controller records:</strong> {decisionRows.length}
+          </p>
+          <p>
+            <strong>Tesla records:</strong> {teslaRows.length}
+          </p>
+          <p>
+            <strong>Latest inverter created_at:</strong> {formatTimestamp(latestInverterCreatedAt)}
+          </p>
+          <p>
+            <strong>Latest decision created_at:</strong> {formatTimestamp(latestDecisionCreatedAt)}
+          </p>
+          <p>
+            <strong>Latest tesla created_at:</strong> {formatTimestamp(latestTeslaCreatedAt)}
+          </p>
+          <p>
+            <strong>Query status:</strong>{" "}
+            {`inv_latest=${queryStatus.latestInverter}, inv_hist=${queryStatus.historyInverter}, dec_latest=${queryStatus.latestDecision}, dec_hist=${queryStatus.historyDecision}, tes_latest=${queryStatus.latestTesla}, tes_hist=${queryStatus.historyTesla}`}
+          </p>
+        </div>
+        {errorMessage ? <p className="status-error">Supabase error: {errorMessage}</p> : null}
       </article>
 
       <section className="metric-grid">

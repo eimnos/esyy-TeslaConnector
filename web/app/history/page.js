@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
+  getSupabaseEnvStatus,
   getRecentControllerDecisions,
   getRecentInverterSamples,
   getRecentTeslaSamples
@@ -69,6 +70,7 @@ function sortByTimestampDesc(rows) {
 }
 
 export default function HistoryPage() {
+  const envStatus = useMemo(() => getSupabaseEnvStatus(), []);
   const [rangeMinutes, setRangeMinutes] = useState(DEFAULT_RANGE);
   const [refreshSeconds, setRefreshSeconds] = useState(DEFAULT_REFRESH);
   const [inverterRows, setInverterRows] = useState([]);
@@ -77,6 +79,11 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [queryStatus, setQueryStatus] = useState({
+    inverter: "idle",
+    decisions: "idle",
+    tesla: "idle"
+  });
   const [lastPollAt, setLastPollAt] = useState(null);
 
   const fetchRows = useCallback(
@@ -87,25 +94,53 @@ export default function HistoryPage() {
         setLoading(true);
       }
 
-      try {
-        const [inverterResult, decisionsResult, teslaResult] = await Promise.all([
-          getRecentInverterSamples(TABLE_LIMIT, rangeMinutes),
-          getRecentControllerDecisions(TABLE_LIMIT, rangeMinutes),
-          getRecentTeslaSamples(TABLE_LIMIT, rangeMinutes)
-        ]);
+      const settled = await Promise.allSettled([
+        getRecentInverterSamples(TABLE_LIMIT, rangeMinutes),
+        getRecentControllerDecisions(TABLE_LIMIT, rangeMinutes),
+        getRecentTeslaSamples(TABLE_LIMIT, rangeMinutes)
+      ]);
 
-        setInverterRows(sortByTimestampDesc(Array.isArray(inverterResult) ? inverterResult : []));
-        setDecisionRows(sortByTimestampDesc(Array.isArray(decisionsResult) ? decisionsResult : []));
-        setTeslaRows(sortByTimestampDesc(Array.isArray(teslaResult) ? teslaResult : []));
-        setErrorMessage(null);
-      } catch (error) {
-        const readable = error instanceof Error ? error.message : "Unknown error while loading history.";
-        setErrorMessage(readable);
-      } finally {
-        setLastPollAt(new Date().toISOString());
-        setLoading(false);
-        setRefreshing(false);
+      const nextStatus = { inverter: "ok", decisions: "ok", tesla: "ok" };
+      const failures = [];
+
+      if (settled[0].status === "fulfilled") {
+        setInverterRows(sortByTimestampDesc(Array.isArray(settled[0].value) ? settled[0].value : []));
+      } else {
+        nextStatus.inverter = "error";
+        failures.push(
+          `inverter: ${
+            settled[0].reason instanceof Error ? settled[0].reason.message : String(settled[0].reason)
+          }`
+        );
       }
+
+      if (settled[1].status === "fulfilled") {
+        setDecisionRows(sortByTimestampDesc(Array.isArray(settled[1].value) ? settled[1].value : []));
+      } else {
+        nextStatus.decisions = "error";
+        failures.push(
+          `decisions: ${
+            settled[1].reason instanceof Error ? settled[1].reason.message : String(settled[1].reason)
+          }`
+        );
+      }
+
+      if (settled[2].status === "fulfilled") {
+        setTeslaRows(sortByTimestampDesc(Array.isArray(settled[2].value) ? settled[2].value : []));
+      } else {
+        nextStatus.tesla = "error";
+        failures.push(
+          `tesla: ${
+            settled[2].reason instanceof Error ? settled[2].reason.message : String(settled[2].reason)
+          }`
+        );
+      }
+
+      setQueryStatus(nextStatus);
+      setErrorMessage(failures.length > 0 ? failures.join(" | ") : null);
+      setLastPollAt(new Date().toISOString());
+      setLoading(false);
+      setRefreshing(false);
     },
     [rangeMinutes]
   );
@@ -131,6 +166,9 @@ export default function HistoryPage() {
   const hasTeslaSeries = teslaSeries.some(
     (point) => point.soc !== null || point.requestedAmps !== null || point.maxAmps !== null
   );
+  const latestInverterCreatedAt = inverterRows[0]?.created_at ?? null;
+  const latestDecisionCreatedAt = decisionRows[0]?.created_at ?? null;
+  const latestTeslaCreatedAt = teslaRows[0]?.created_at ?? null;
 
   return (
     <section className="page-grid">
@@ -186,6 +224,48 @@ export default function HistoryPage() {
           {loading ? "Loading history..." : `Last poll: ${formatTimestamp(lastPollAt)}`}
         </p>
         {errorMessage ? <p className="status-error">Error: {errorMessage}</p> : null}
+      </article>
+
+      <article className="status-card controls-card">
+        <div className="status-header">
+          <h2>History Diagnostics</h2>
+          <span className={`pill ${errorMessage ? "pill-error" : "pill-ok"}`}>
+            {errorMessage ? "QUERY ERROR" : "QUERY OK"}
+          </span>
+        </div>
+        <div className="diagnostic-grid">
+          <p>
+            <strong>Env URL present:</strong> {envStatus.urlPresent ? "yes" : "no"}
+          </p>
+          <p>
+            <strong>Env anon key present:</strong> {envStatus.anonKeyPresent ? "yes" : "no"}
+          </p>
+          <p>
+            <strong>Env host:</strong> {envStatus.urlHost ?? "-"}
+          </p>
+          <p>
+            <strong>Inverter records:</strong> {inverterRows.length}
+          </p>
+          <p>
+            <strong>Decision records:</strong> {decisionRows.length}
+          </p>
+          <p>
+            <strong>Tesla records:</strong> {teslaRows.length}
+          </p>
+          <p>
+            <strong>Latest inverter created_at:</strong> {formatTimestamp(latestInverterCreatedAt)}
+          </p>
+          <p>
+            <strong>Latest decision created_at:</strong> {formatTimestamp(latestDecisionCreatedAt)}
+          </p>
+          <p>
+            <strong>Latest tesla created_at:</strong> {formatTimestamp(latestTeslaCreatedAt)}
+          </p>
+          <p>
+            <strong>Query status:</strong>{" "}
+            {`inv=${queryStatus.inverter}, dec=${queryStatus.decisions}, tesla=${queryStatus.tesla}`}
+          </p>
+        </div>
       </article>
 
       <article className="chart-card">

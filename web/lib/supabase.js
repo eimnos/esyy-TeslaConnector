@@ -13,6 +13,24 @@ function getSupabaseEnv() {
   return { url, anonKey };
 }
 
+export function getSupabaseEnvStatus() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  let urlHost = null;
+  if (url) {
+    try {
+      urlHost = new URL(url).host;
+    } catch (_error) {
+      urlHost = "invalid-url";
+    }
+  }
+  return {
+    urlPresent: Boolean(url),
+    anonKeyPresent: Boolean(anonKey),
+    urlHost
+  };
+}
+
 function createSupabaseReadClient() {
   const { url, anonKey } = getSupabaseEnv();
   return createClient(url, anonKey, {
@@ -47,7 +65,7 @@ function getWindowStartIso(minutesBack) {
 }
 
 async function queryRecent(tableName, options = {}) {
-  const { limitCount = 100, minutesBack = null } = options;
+  const { limitCount = 100, minutesBack = null, fallbackToLatest = true } = options;
   const supabase = createSupabaseReadClient();
   let query = supabase
     .from(tableName)
@@ -65,8 +83,23 @@ async function queryRecent(tableName, options = {}) {
   if (error) {
     throw new Error(`${tableName} read failed: ${error.message}`);
   }
+  let rows = Array.isArray(data) ? data : [];
 
-  return Array.isArray(data) ? data : [];
+  if (rows.length === 0 && startIso && fallbackToLatest) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from(tableName)
+      .select("*")
+      .order("sample_timestamp", { ascending: false })
+      .limit(limitCount);
+
+    if (fallbackError) {
+      throw new Error(`${tableName} fallback read failed: ${fallbackError.message}`);
+    }
+
+    rows = Array.isArray(fallbackData) ? fallbackData : [];
+  }
+
+  return rows;
 }
 
 export function getLatestInverterSample() {

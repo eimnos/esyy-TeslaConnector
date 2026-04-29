@@ -21,6 +21,21 @@ Aggiornamento Wave 9D (ha-solarman + protocollo T6):
   - `Pload`: `547-548` (profilo usa `[548,547]`)
   - `Ppv total`: `553-554` (profilo usa `[554,553]`)
 
+## Wave 9E Target Test Setup (April 29, 2026)
+
+Preparazione test mirato completata:
+
+- parser dedicato: `src/afore_ha_candidates.py`
+- sessione validazione: `src/ha_candidate_validation_session.py`
+- scan mirati:
+  - `data/scan_target_ha_afore_power_input.csv` (529..560)
+  - `data/scan_target_ha_afore_meter_input.csv` (1002..1030)
+
+Stato decisionale:
+
+- `535-536`, `547-548`, `553-554`: restano `candidate` finche non c'e confronto app nello stesso istante con trend coerente.
+- `524-525`: resta `rejected/partial` (Qinv).
+
 ## Wave 9B Grid Confirmation (April 29, 2026)
 
 Sessione guidata eseguita con `src/grid_confirmation_session.py`.
@@ -52,8 +67,8 @@ Le scansioni sono state eseguite in sequenza con finestra di circa 2 minuti tra 
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `560` | PV Power (candidato) | `x1` | `W` | n/d | baseline `3777`, load_on `3775`, load_off `3764` | `value` | partial | Registro stabile e plausibile per potenza FV, ma manca confronto istantaneo con app/display inverter. |
 | `524-525` | Grid Power import/export (candidato) | `x1` | `W` | app: ~`4700 W` import (Wave 9C) | Wave 9C: `+256 .. +277` con EV load elevato | `int32_signed=(reg524<<16)+reg525` | rejected/partial | Non segue carico reale > `4 kW`. Segno storico import/export non piu affidabile finche non viene trovato il registro corretto. |
-| `535-536` | Grid Power attivo totale (nuovo candidato Wave 9D) | `x1` | `W` | app: import variabile | scan target: ordine profilo `[536,535]` -> `~3246..3325` | `int32_signed(low=reg536,high=reg535)` | candidate | Da protocollo T6: `Pgrid` (active). Da confermare con test EV ON/OFF sincronizzato al minuto con app. |
-| `547-548` | Load Power totale (nuovo candidato Wave 9D) | `x1` | `W` | n/d | ordine profilo `[548,547]` -> `~3248..3325` | `int32_signed(low=reg548,high=reg547)` | candidate | Da protocollo T6: `Pload`. Richiede test controllato con carico noto. |
+| `535-536` | Grid Power attivo totale (nuovo candidato Wave 9D) | `x1` | `W` | app: import variabile | `~291..3325` (ordine `[535,536]` plausibile); ordine inverso produce valori non fisici `~19-25M` | `int32_signed(high=reg535,low=reg536)` e confronto ordine inverso | candidate | Da protocollo T6: `Pgrid` (active). Da confermare con test EV ON/OFF sincronizzato al minuto con app. |
+| `547-548` | Load Power totale (nuovo candidato Wave 9D) | `x1` | `W` | n/d | `~291..3325` (ordine `[547,548]` plausibile); ordine inverso `~19-25M` | `int32_signed(high=reg547,low=reg548)` e confronto ordine inverso | candidate | Da protocollo T6: `Pload`. Richiede test controllato con carico noto e confronto app. |
 | `553-554` | PV total power (nuovo candidato Wave 9D) | `x1` | `W` | n/d | notturno/attuale `0` in scan target | `uint32(low=reg554,high=reg553)` | candidate | Da protocollo T6: `Ppv`. Da validare in fascia di produzione FV. |
 | `1003` | Today Energy Import (nuovo candidato Wave 9D) | `x0.1` | `kWh` | n/d | `92..106` in scan recenti | `value*0.1` | candidate | Registro energia giornaliera, non potenza istantanea. |
 | `1002` | Today Energy Export (nuovo candidato Wave 9D) | `x0.1` | `kWh` | n/d | `0` in scan recenti | `value*0.1` | candidate | Registro energia giornaliera, utile per bilanci ma non per controllo realtime amps. |

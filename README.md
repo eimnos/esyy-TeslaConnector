@@ -14,13 +14,12 @@ Stato attuale (Wave 7 MVP):
 
 Le command Tesla reali restano volutamente disabilitate nelle wave correnti.
 
-## Stato operativo attuale (April 29, 2026)
+## Stato operativo attuale (April 30, 2026)
 
-- Grid Power dal collector Afore/Solarman: **non identificato in modo affidabile**.
-- Registro `524-525`: declassato a `rejected/partial` (non segue carico EV reale > 4 kW).
-- Automazione Tesla basata su surplus FV: **bloccata**.
-- Sistema attivo in modalita **monitoraggio/dry-run** (PV/Tesla/storico).
-- In dashboard, Grid Import/Export va considerato **unconfirmed/unreliable**.
+- Grid Power confermato su `535-536` (signed int32, `import_positive`).
+- Load Power confermato su `547-548` (signed int32).
+- Registro `524-525` mantenuto `rejected/partial` (Qinv, non Pgrid).
+- Automazione Tesla reale resta disabilitata; sistema in modalita **monitoraggio/dry-run simulato**.
 
 ## Architettura (high level)
 
@@ -168,10 +167,10 @@ python -m src.analyze_register_changes data/confirm_load_off.csv data/confirm_lo
 
 ## Wave 3 - Prudente Dry-Run Controller
 
-Assunzioni provvisorie:
-- Grid Power candidato: `524-525` (`int32 signed`)
-- PV Power candidato: `560`
-- Load Power: non confermato
+Mapping operativo corrente:
+- Grid Power: `535-536` (`int32 signed`, `import_positive`)
+- Load Power: `547-548` (`int32 signed`)
+- PV Power candidato: `560` (in verifica continua)
 
 Nuove variabili `.env` (con default in `.env.example`):
 
@@ -180,6 +179,9 @@ AFORE_PV_POWER_REGISTER=560
 AFORE_GRID_POWER_REGISTER_HIGH=535
 AFORE_GRID_POWER_REGISTER_LOW=536
 AFORE_GRID_POWER_SCALE=1
+AFORE_LOAD_POWER_REGISTER_HIGH=547
+AFORE_LOAD_POWER_REGISTER_LOW=548
+AFORE_LOAD_POWER_SCALE=1
 AFORE_PV_POWER_SCALE=1
 AFORE_GRID_SIGN_MODE=import_positive
 GRID_AUTOMATION_ENABLED=false
@@ -362,6 +364,31 @@ Note:
 Nuova tabella Supabase:
 
 - `afore_candidate_samples` (vedi `db/schema.sql`).
+
+## Wave 11A - Full Controller Dry-Run (No Tesla Commands)
+
+Script dedicato:
+
+```powershell
+python -m src.solar_tesla_controller_dry_run --duration-minutes 30 --interval-seconds 60 --log-path data/solar_tesla_controller_dry_run_log.csv
+```
+
+Comportamento:
+
+- legge Afore `PV / Grid / Load` con mapping confermato;
+- legge Tesla solo in read-only (nessun wake-up, nessun comando);
+- calcola target amps teorico e decisione simulata (`START_CHARGE`, `SET_AMPS`, `STOP_CHARGE`, `NO_ACTION`);
+- applica guardrail:
+  - min/max amps;
+  - delta minimo `2A`;
+  - conferma start/stop su piu cicli;
+  - cooldown tra decisioni.
+
+Sicurezza:
+
+- `TESLA_COMMANDS_ENABLED=false`
+- `GRID_AUTOMATION_ENABLED=false`
+- tutte le decisioni restano simulate.
 
 ## Sicurezza e limiti Wave 1
 

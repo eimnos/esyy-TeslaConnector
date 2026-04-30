@@ -23,6 +23,9 @@ def make_config(grid_sign_mode: str = "unknown") -> AppConfig:
         afore_grid_power_register_high=524,
         afore_grid_power_register_low=525,
         afore_grid_power_scale=1.0,
+        afore_load_power_register_high=547,
+        afore_load_power_register_low=548,
+        afore_load_power_scale=1.0,
         afore_pv_power_scale=1.0,
         afore_grid_sign_mode=grid_sign_mode,
         supabase_enabled=False,
@@ -60,9 +63,12 @@ def test_build_snapshot_from_registers_applies_scales_and_sign_mode() -> None:
         560: 3500,
         524: 0x0000,
         525: 0x0064,
+        547: 0x0000,
+        548: 0x012C,
     }
     snapshot = build_snapshot_from_registers(register_values=registers, config=config)
     assert snapshot.pv_power_w == 3500.0
+    assert snapshot.load_power_w == 300.0
     assert snapshot.grid_power_raw_w == 100.0
     assert snapshot.grid_import_w == 0.0
     assert snapshot.grid_export_w == 100.0

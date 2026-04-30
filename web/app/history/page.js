@@ -19,9 +19,9 @@ const REFRESH_OPTIONS_SECONDS = [30, 60];
 const DEFAULT_RANGE = 60;
 const DEFAULT_REFRESH = 60;
 const TABLE_LIMIT = 100;
-const GRID_RELIABILITY_LABEL = "UNCONFIRMED / UNRELIABLE";
+const GRID_RELIABILITY_LABEL = "CONFIRMED (import_positive)";
 const GRID_RELIABILITY_DETAIL =
-  "Wave 9C: Grid values are shown for diagnostics only and are not valid for automation decisions.";
+  "Wave 9G: Grid and Load mapping confirmed. Tesla automation is still disabled; history remains read-only monitoring.";
 
 function formatNumber(value, digits = 2) {
   if (value === null || value === undefined) {
@@ -317,9 +317,9 @@ export default function HistoryPage() {
                 <tr>
                   <th>sample_timestamp</th>
                   <th>pv_power_w</th>
-                  <th>grid_raw_w (unreliable)</th>
-                  <th>grid_import_w (unreliable)</th>
-                  <th>grid_export_w (unreliable)</th>
+                  <th>grid_raw_w</th>
+                  <th>grid_import_w</th>
+                  <th>grid_export_w</th>
                   <th>source</th>
                 </tr>
               </thead>

@@ -57,13 +57,35 @@ create table if not exists public.controller_decisions (
     sample_timestamp timestamptz not null,
     cycle integer,
     export_w double precision,
+    import_w double precision,
+    grid_power_w double precision,
+    load_power_w double precision,
+    pv_power_w double precision,
     current_amps_before integer,
+    current_amps integer,
     target_amps integer,
     action text not null,
     current_amps_after integer,
+    simulated boolean not null default false,
+    reason text,
     note text,
     created_at timestamptz not null default now()
 );
+
+alter table if exists public.controller_decisions
+    add column if not exists import_w double precision;
+alter table if exists public.controller_decisions
+    add column if not exists grid_power_w double precision;
+alter table if exists public.controller_decisions
+    add column if not exists load_power_w double precision;
+alter table if exists public.controller_decisions
+    add column if not exists pv_power_w double precision;
+alter table if exists public.controller_decisions
+    add column if not exists current_amps integer;
+alter table if exists public.controller_decisions
+    add column if not exists simulated boolean default false;
+alter table if exists public.controller_decisions
+    add column if not exists reason text;
 
 create index if not exists idx_controller_decisions_sample_timestamp
     on public.controller_decisions (sample_timestamp);

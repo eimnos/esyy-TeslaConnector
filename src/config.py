@@ -27,6 +27,9 @@ class AppConfig:
     afore_grid_power_register_high: int
     afore_grid_power_register_low: int
     afore_grid_power_scale: float
+    afore_load_power_register_high: int
+    afore_load_power_register_low: int
+    afore_load_power_scale: float
     afore_pv_power_scale: float
     afore_grid_sign_mode: str
     supabase_enabled: bool
@@ -119,6 +122,13 @@ def load_config(env_file: str | None = None) -> AppConfig:
             "AFORE_GRID_POWER_REGISTER_LOW", 536, minimum=0
         ),
         afore_grid_power_scale=_parse_float("AFORE_GRID_POWER_SCALE", 1.0, minimum=0.000001),
+        afore_load_power_register_high=_parse_int(
+            "AFORE_LOAD_POWER_REGISTER_HIGH", 547, minimum=0
+        ),
+        afore_load_power_register_low=_parse_int(
+            "AFORE_LOAD_POWER_REGISTER_LOW", 548, minimum=0
+        ),
+        afore_load_power_scale=_parse_float("AFORE_LOAD_POWER_SCALE", 1.0, minimum=0.000001),
         afore_pv_power_scale=_parse_float("AFORE_PV_POWER_SCALE", 1.0, minimum=0.000001),
         afore_grid_sign_mode=_parse_choice(
             "AFORE_GRID_SIGN_MODE",
@@ -146,6 +156,10 @@ def load_config(env_file: str | None = None) -> AppConfig:
     if config.afore_grid_power_register_high == config.afore_grid_power_register_low:
         raise ValueError(
             "AFORE_GRID_POWER_REGISTER_HIGH and AFORE_GRID_POWER_REGISTER_LOW must be different"
+        )
+    if config.afore_load_power_register_high == config.afore_load_power_register_low:
+        raise ValueError(
+            "AFORE_LOAD_POWER_REGISTER_HIGH and AFORE_LOAD_POWER_REGISTER_LOW must be different"
         )
 
     return config

@@ -16,7 +16,7 @@ import {
 } from "recharts";
 import {
   getSupabaseEnvStatus,
-  getLatestControllerDecision,
+  getLatestSimulatedControllerDecision,
   getLatestInverterSample,
   getLatestTeslaSample,
   getRecentControllerDecisions,
@@ -33,9 +33,9 @@ const CHART_WINDOW_OPTIONS = [
 const DEFAULT_REFRESH_SECONDS = 60;
 const DEFAULT_WINDOW_MINUTES = 360;
 const CHART_LIMIT = 400;
-const GRID_RELIABILITY_LABEL = "UNCONFIRMED / UNRELIABLE";
+const GRID_RELIABILITY_LABEL = "CONFIRMED (import_positive)";
 const GRID_RELIABILITY_DETAIL =
-  "Wave 9C: Grid Import/Export from Afore/Solarman is diagnostic only and not valid for automation.";
+  "Wave 9G: Grid=535-536 and Load=547-548 confirmed. Automation stays disabled (simulation mode only).";
 
 function asNumber(value) {
   if (value === null || value === undefined) {
@@ -165,7 +165,7 @@ export default function DashboardPage() {
       ];
       const settled = await Promise.allSettled([
         getLatestInverterSample(),
-        getLatestControllerDecision(),
+        getLatestSimulatedControllerDecision(),
         getLatestTeslaSample(),
         getRecentInverterSamples(CHART_LIMIT, windowMinutes),
         getRecentControllerDecisions(CHART_LIMIT, windowMinutes),
@@ -241,6 +241,7 @@ export default function DashboardPage() {
   const gridExportValue = formatNumber(inverterSample?.grid_export_w, "W");
   const targetAmpsValue = formatNumber(controllerDecision?.target_amps, "A");
   const decisionValue = controllerDecision?.action ?? "-";
+  const decisionReasonValue = controllerDecision?.reason ?? controllerDecision?.note ?? "-";
   const updatedAtValue = formatTimestamp(latestTimestamp);
   const teslaSocValue = formatNumber(teslaSample?.battery_level, "%");
   const teslaChargingValue = teslaSample?.charging_state ?? "-";
@@ -414,11 +415,11 @@ export default function DashboardPage() {
           <p className={metricValueClass(pvValue)}>{pvValue}</p>
         </article>
         <article className="metric-card">
-          <h3>Grid Import (unreliable)</h3>
+          <h3>Grid Import</h3>
           <p className={metricValueClass(gridImportValue)}>{gridImportValue}</p>
         </article>
         <article className="metric-card">
-          <h3>Grid Export (unreliable)</h3>
+          <h3>Grid Export</h3>
           <p className={metricValueClass(gridExportValue)}>{gridExportValue}</p>
         </article>
         <article className="metric-card">
@@ -426,8 +427,12 @@ export default function DashboardPage() {
           <p className={metricValueClass(targetAmpsValue)}>{targetAmpsValue}</p>
         </article>
         <article className="metric-card">
-          <h3>Latest Decision</h3>
+          <h3>Latest Simulated Decision</h3>
           <p className={metricValueClass(decisionValue)}>{decisionValue}</p>
+        </article>
+        <article className="metric-card">
+          <h3>Decision Reason</h3>
+          <p className={metricValueClass(decisionReasonValue)}>{decisionReasonValue}</p>
         </article>
         <article className="metric-card">
           <h3>Last Update</h3>
@@ -472,11 +477,11 @@ export default function DashboardPage() {
               <dd>{formatNumber(inverterSample?.grid_power_raw_w, "W")}</dd>
             </div>
             <div>
-              <dt>Grid import (unreliable)</dt>
+              <dt>Grid import</dt>
               <dd>{formatNumber(inverterSample?.grid_import_w, "W")}</dd>
             </div>
             <div>
-              <dt>Grid export (unreliable)</dt>
+              <dt>Grid export</dt>
               <dd>{formatNumber(inverterSample?.grid_export_w, "W")}</dd>
             </div>
             <div>
@@ -487,7 +492,7 @@ export default function DashboardPage() {
         </article>
 
         <article className="data-card">
-          <h2>Latest Controller Decision</h2>
+          <h2>Latest Simulated Controller Decision</h2>
           <dl>
             <div>
               <dt>Sample timestamp</dt>
@@ -502,7 +507,17 @@ export default function DashboardPage() {
               <dd>{controllerDecision?.action ?? "-"}</dd>
             </div>
             <div>
-              <dt>Export (unreliable)</dt>
+              <dt>Simulated</dt>
+              <dd>
+                {controllerDecision?.simulated === true
+                  ? "true"
+                  : controllerDecision?.simulated === false
+                    ? "false"
+                    : "-"}
+              </dd>
+            </div>
+            <div>
+              <dt>Export</dt>
               <dd>{formatNumber(controllerDecision?.export_w, "W")}</dd>
             </div>
             <div>
@@ -512,6 +527,10 @@ export default function DashboardPage() {
             <div>
               <dt>Target amps</dt>
               <dd>{formatNumber(controllerDecision?.target_amps, "A")}</dd>
+            </div>
+            <div>
+              <dt>Reason</dt>
+              <dd>{controllerDecision?.reason ?? controllerDecision?.note ?? "-"}</dd>
             </div>
           </dl>
           <p className="note">{controllerDecision?.note ?? "No notes."}</p>
@@ -591,7 +610,7 @@ export default function DashboardPage() {
         </article>
 
         <article className="chart-card">
-          <h2>Grid Import / Export Over Time (unreliable)</h2>
+          <h2>Grid Import / Export Over Time</h2>
           {hasGridSeries ? (
             <div className="chart-body">
               <ResponsiveContainer width="100%" height={280}>
@@ -608,7 +627,7 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="chart-empty">No grid chart data in selected range (diagnostic feed only).</p>
+            <p className="chart-empty">No grid chart data in selected range.</p>
           )}
         </article>
 

@@ -56,6 +56,30 @@ async function queryLatest(tableName) {
   return data;
 }
 
+async function queryLatestFiltered(
+  tableName,
+  { column, value, fallbackToLatest = false }
+) {
+  const supabase = createSupabaseReadClient();
+  const { data, error } = await supabase
+    .from(tableName)
+    .select("*")
+    .eq(column, value)
+    .order("sample_timestamp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!error) {
+    return data;
+  }
+
+  if (fallbackToLatest) {
+    return queryLatest(tableName);
+  }
+
+  throw new Error(`${tableName} filtered read failed: ${error.message}`);
+}
+
 function getWindowStartIso(minutesBack) {
   if (!Number.isFinite(minutesBack) || minutesBack <= 0) {
     return null;
@@ -108,6 +132,14 @@ export function getLatestInverterSample() {
 
 export function getLatestControllerDecision() {
   return queryLatest("controller_decisions");
+}
+
+export function getLatestSimulatedControllerDecision() {
+  return queryLatestFiltered("controller_decisions", {
+    column: "simulated",
+    value: true,
+    fallbackToLatest: true
+  });
 }
 
 export function getRecentInverterSamples(limitCount = 100, minutesBack = null) {

@@ -39,6 +39,7 @@ class AforeSnapshot:
 
     timestamp_utc: str
     pv_power_w: float
+    load_power_w: float
     grid_power_raw_w: float
     grid_sign_mode: str
     grid_sign_assumed_mode: str
@@ -106,6 +107,8 @@ def build_snapshot_from_registers(
         pv_raw = float(register_values[config.afore_pv_power_register])
         grid_high = register_values[config.afore_grid_power_register_high]
         grid_low = register_values[config.afore_grid_power_register_low]
+        load_high = register_values[config.afore_load_power_register_high]
+        load_low = register_values[config.afore_load_power_register_low]
     except KeyError as exc:
         raise KeyError(
             f"Missing expected register in scan data: {exc}. "
@@ -113,6 +116,8 @@ def build_snapshot_from_registers(
         ) from exc
 
     pv_power_w = pv_raw * config.afore_pv_power_scale
+    load_signed = parse_signed_int32(load_high, load_low)
+    load_power_w = float(load_signed) * config.afore_load_power_scale
     grid_signed = parse_signed_int32(grid_high, grid_low)
     grid_power_raw_w = float(grid_signed) * config.afore_grid_power_scale
     grid_normalized = normalize_grid_power(grid_power_raw_w, config.afore_grid_sign_mode)
@@ -120,6 +125,7 @@ def build_snapshot_from_registers(
     return AforeSnapshot(
         timestamp_utc=timestamp_utc or datetime.now(timezone.utc).isoformat(),
         pv_power_w=pv_power_w,
+        load_power_w=load_power_w,
         grid_power_raw_w=grid_normalized.grid_power_raw_w,
         grid_sign_mode=grid_normalized.grid_sign_mode,
         grid_sign_assumed_mode=grid_normalized.grid_sign_assumed_mode,
@@ -178,11 +184,15 @@ class AforeReader:
             self._config.afore_pv_power_register,
             self._config.afore_grid_power_register_high,
             self._config.afore_grid_power_register_low,
+            self._config.afore_load_power_register_high,
+            self._config.afore_load_power_register_low,
         )
         max_register = max(
             self._config.afore_pv_power_register,
             self._config.afore_grid_power_register_high,
             self._config.afore_grid_power_register_low,
+            self._config.afore_load_power_register_high,
+            self._config.afore_load_power_register_low,
         )
         count = max_register - min_register + 1
 

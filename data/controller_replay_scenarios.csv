@@ -1,0 +1,19 @@
+scenario,pv_power_w,load_power_w,grid_power_w,current_amps,notes
+night_import,0,450,450,,night baseline: no PV, importing from grid
+low_pv_no_export,350,800,450,,low PV still no export
+surplus_below_min_amps,2000,800,-1200,,export below 6A threshold (~1380W)
+surplus_min_amps_candidate,2500,1000,-1500,,target amps reaches 6A but start threshold (1600W) not met
+start_confirm_cycle_1,2800,1000,-1800,,first cycle above start threshold
+start_confirm_cycle_2,2900,1100,-1800,,second cycle above threshold should start simulated charge
+surplus_growth_cooldown,4300,1300,-3000,,cooldown should block immediate set amps after start
+surplus_growth_set_amps,4300,1300,-3000,,set amps should apply after cooldown
+surplus_peak_cooldown,6000,1000,-5000,,cooldown should block immediate max set amps
+surplus_peak_set_max,6000,1000,-5000,,set amps should reach max limit
+surplus_drop_cooldown,3600,1300,-2300,,cooldown should block immediate downward adjustment
+surplus_drop_set_amps,3600,1300,-2300,,set amps should decrease after cooldown
+unstable_import_blip_1,900,2000,1100,,short import spike should not stop immediately
+unstable_export_recover,3400,1100,-2300,,export recovers clearly above stop threshold
+unstable_import_blip_2,800,1800,1000,,another short import spike
+sustained_import_stop_1,700,2200,1500,,first sustained import cycle for stop confirmation
+sustained_import_stop_2,650,2100,1500,,second sustained import cycle should stop simulated charge
+post_stop_night,0,500,500,,back to idle import

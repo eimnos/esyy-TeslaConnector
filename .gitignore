@@ -2,6 +2,7 @@
 __pycache__/
 .venv/
 data/*.csv
+!data/controller_replay_scenarios.csv
 data/tesla_status_sample.json
 .pytest_cache/
 .DS_Store

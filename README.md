@@ -177,11 +177,11 @@ Nuove variabili `.env` (con default in `.env.example`):
 
 ```text
 AFORE_PV_POWER_REGISTER=560
-AFORE_GRID_POWER_REGISTER_HIGH=524
-AFORE_GRID_POWER_REGISTER_LOW=525
+AFORE_GRID_POWER_REGISTER_HIGH=535
+AFORE_GRID_POWER_REGISTER_LOW=536
 AFORE_GRID_POWER_SCALE=1
 AFORE_PV_POWER_SCALE=1
-AFORE_GRID_SIGN_MODE=unknown
+AFORE_GRID_SIGN_MODE=import_positive
 GRID_AUTOMATION_ENABLED=false
 ```
 
@@ -191,10 +191,11 @@ Esecuzione loop dry-run (30 minuti, senza Tesla API):
 python -m src.controller_loop_dry_run --duration-minutes 30 --log-path data/controller_dry_run_log.csv
 ```
 
-Nota Wave 9C:
+Nota Wave 9G:
 
+- `535-536` (Grid) e `547-548` (Load) risultano confermati come mapping operativo.
 - con `GRID_AUTOMATION_ENABLED=false` il loop continua a leggere/salvare dati, ma non produce azioni automatiche basate su `grid_export_w`.
-- finche Grid Power resta non confermato, mantenere il sistema in monitoraggio.
+- automazione Tesla resta in monitoraggio/dry-run fino a decisione esplicita di abilitazione.
 
 Smoke test rapido (1 ciclo):
 

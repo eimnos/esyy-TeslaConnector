@@ -51,6 +51,12 @@ Output:
 - Stato mapping Grid Power: **non confermato**.
 - `AFORE_GRID_SIGN_MODE` deve restare `unknown` finche non viene isolato il vero registro rete.
 
+## Update After Wave 9G (April 30, 2026)
+
+- Questo documento resta il report diagnostico della fase 9C.
+- Con validazione successiva (Wave 9G), il mapping operativo Grid e stato confermato su `535-536` (signed int32, scale `x1`).
+- Segno operativo confermato: `AFORE_GRID_SIGN_MODE=import_positive`.
+
 ## Next Recommended Session
 
 Per chiusura definitiva:
@@ -59,4 +65,3 @@ Per chiusura definitiva:
 2. Annotare nello stesso minuto i valori app inverter (`grid import/export` istantaneo).
 3. Ripetere analisi su input registers con delta minimo atteso > `1500 W`.
 4. Confermare solo un candidato che segua chiaramente l'andamento ON/OFF del carico reale.
-

@@ -113,16 +113,16 @@ def load_config(env_file: str | None = None) -> AppConfig:
         grid_automation_enabled=_parse_bool("GRID_AUTOMATION_ENABLED", False),
         afore_pv_power_register=_parse_int("AFORE_PV_POWER_REGISTER", 560, minimum=0),
         afore_grid_power_register_high=_parse_int(
-            "AFORE_GRID_POWER_REGISTER_HIGH", 524, minimum=0
+            "AFORE_GRID_POWER_REGISTER_HIGH", 535, minimum=0
         ),
         afore_grid_power_register_low=_parse_int(
-            "AFORE_GRID_POWER_REGISTER_LOW", 525, minimum=0
+            "AFORE_GRID_POWER_REGISTER_LOW", 536, minimum=0
         ),
         afore_grid_power_scale=_parse_float("AFORE_GRID_POWER_SCALE", 1.0, minimum=0.000001),
         afore_pv_power_scale=_parse_float("AFORE_PV_POWER_SCALE", 1.0, minimum=0.000001),
         afore_grid_sign_mode=_parse_choice(
             "AFORE_GRID_SIGN_MODE",
-            "unknown",
+            "import_positive",
             {"unknown", "import_positive", "export_positive"},
         ),
         supabase_enabled=_parse_bool("SUPABASE_ENABLED", False),

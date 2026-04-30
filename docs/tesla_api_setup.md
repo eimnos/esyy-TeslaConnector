@@ -12,6 +12,7 @@ Stato attuale del progetto:
 - nessun comando automatico dal controller;
 - nessun wake-up automatico;
 - token solo da `.env` locale;
+- refresh automatico access token con token store locale (Wave 11A.1);
 - polling cost-aware;
 - logging chiamate API;
 - comandi Tesla bloccati di default (`TESLA_COMMANDS_ENABLED=false`);
@@ -49,8 +50,11 @@ TESLA_ACCESS_TOKEN=
 TESLA_REFRESH_TOKEN=
 TESLA_VEHICLE_ID=
 TESLA_API_BASE_URL=https://fleet-api.prd.eu.vn.cloud.tesla.com
+TESLA_AUTH_BASE_URL=https://auth.tesla.com/oauth2/v3
 TESLA_API_VERIFY_TLS=true
 TESLA_READONLY_POLL_SECONDS=600
+TESLA_TOKEN_STORE_PATH=data/tesla_token_store.json
+TESLA_TOKEN_REFRESH_LEEWAY_SECONDS=120
 TESLA_ALLOW_WAKE_UP=false
 TESLA_COMMANDS_ENABLED=false
 ```
@@ -59,8 +63,36 @@ Note sicurezza:
 
 - `TESLA_CLIENT_SECRET`, `TESLA_ACCESS_TOKEN` e `TESLA_REFRESH_TOKEN` non vanno mai committati.
 - `.env` deve restare untracked.
+- il token store locale `data/tesla_token_store.json` non va committato.
 - non usare `SUPABASE_SERVICE_ROLE_KEY` nel frontend web.
 - lasciare `TESLA_API_VERIFY_TLS=true` in produzione; impostarlo a `false` solo per test locali con proxy HTTPS self-signed.
+
+## Wave 11A.1 - Auto Refresh Token
+
+Da Wave 11A.1 il client read-only Tesla esegue refresh OAuth automatico:
+
+- prima delle chiamate, se `expires_at` e vicino alla scadenza (`TESLA_TOKEN_REFRESH_LEEWAY_SECONDS`);
+- su errore `401`, tenta un solo refresh e ritenta una sola volta la chiamata.
+
+Store locale (gitignored):
+
+- `data/tesla_token_store.json`
+- campi: `access_token`, `refresh_token`, `expires_at`, `updated_at`
+
+Nota importante su Tesla refresh token:
+
+- il `refresh_token` e trattato come single-use;
+- ad ogni refresh viene salvato atomicamente il nuovo `refresh_token` restituito;
+- se refresh fallisce o il token e invalidato, il client alza:
+  - `Tesla re-authorization required`
+  - in quel caso serve rifare manualmente l'authorization code flow.
+
+Utility CLI:
+
+```powershell
+py -m src.tesla_token_manager --status
+py -m src.tesla_token_manager --refresh-now
+```
 
 ## Read-only (attivo)
 

@@ -13,6 +13,19 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
+try:
+    from src.tesla_token_manager import (
+        TeslaReauthorizationRequiredError,
+        TeslaTokenManager,
+        TeslaTokenManagerError,
+    )
+except ModuleNotFoundError:  # Allows `python src/tesla_client.py`
+    from tesla_token_manager import (  # type: ignore[no-redef]
+        TeslaReauthorizationRequiredError,
+        TeslaTokenManager,
+        TeslaTokenManagerError,
+    )
+
 
 class TeslaApiError(Exception):
     """Base Tesla API client error."""
@@ -24,6 +37,10 @@ class TeslaUnauthorizedError(TeslaApiError):
 
 class TeslaApiResponseError(TeslaApiError):
     """Raised when Tesla API returns non-success response."""
+
+
+class TeslaReauthorizationError(TeslaUnauthorizedError):
+    """Raised when access token cannot be refreshed automatically."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +58,9 @@ class TeslaApiConfig:
     commands_enabled: bool
     request_timeout_seconds: float = 15.0
     request_verify_tls: bool = True
+    auth_base_url: str = "https://auth.tesla.com/oauth2/v3"
+    token_store_path: str = "data/tesla_token_store.json"
+    token_refresh_leeway_seconds: int = 120
 
 
 def _parse_bool(name: str, default: bool) -> bool:
@@ -77,8 +97,6 @@ def load_tesla_config(env_file: str | None = None) -> TeslaApiConfig:
     load_dotenv(dotenv_path=env_file, override=False)
 
     access_token = os.getenv("TESLA_ACCESS_TOKEN", "").strip()
-    if not access_token:
-        raise ValueError("TESLA_ACCESS_TOKEN is required for read-only status calls")
 
     api_base_url = os.getenv(
         "TESLA_API_BASE_URL", "https://fleet-api.prd.eu.vn.cloud.tesla.com"
@@ -97,6 +115,16 @@ def load_tesla_config(env_file: str | None = None) -> TeslaApiConfig:
         allow_wake_up=_parse_bool("TESLA_ALLOW_WAKE_UP", False),
         commands_enabled=_parse_bool("TESLA_COMMANDS_ENABLED", False),
         request_verify_tls=_parse_bool("TESLA_API_VERIFY_TLS", True),
+        auth_base_url=os.getenv(
+            "TESLA_AUTH_BASE_URL", "https://auth.tesla.com/oauth2/v3"
+        ).strip(),
+        token_store_path=os.getenv(
+            "TESLA_TOKEN_STORE_PATH", "data/tesla_token_store.json"
+        ).strip()
+        or "data/tesla_token_store.json",
+        token_refresh_leeway_seconds=_parse_int(
+            "TESLA_TOKEN_REFRESH_LEEWAY_SECONDS", 120, minimum=0
+        ),
     )
     return config
 
@@ -115,14 +143,27 @@ class TeslaFleetClient:
         config: TeslaApiConfig,
         session: requests.Session | Any | None = None,
         calls_log_path: str | Path = "data/tesla_api_calls_log.csv",
+        token_manager: TeslaTokenManager | None = None,
     ) -> None:
         self.config = config
         self.session = session or requests.Session()
         self.calls_log_path = Path(calls_log_path)
+        self.token_manager = token_manager or TeslaTokenManager(
+            client_id=self.config.client_id,
+            client_secret=self.config.client_secret,
+            access_token=self.config.access_token,
+            refresh_token=self.config.refresh_token,
+            auth_base_url=self.config.auth_base_url,
+            store_path=self.config.token_store_path,
+            request_timeout_seconds=self.config.request_timeout_seconds,
+            request_verify_tls=self.config.request_verify_tls,
+            session=self.session,
+        )
 
     def _headers(self) -> dict[str, str]:
+        token = self.token_manager.get_access_token()
         return {
-            "Authorization": f"Bearer {self.config.access_token}",
+            "Authorization": f"Bearer {token}",
             "Accept": "application/json",
         }
 
@@ -163,6 +204,43 @@ class TeslaFleetClient:
                 ]
             )
 
+    def _send_get_request(
+        self,
+        *,
+        path: str,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[requests.Response | Any, int]:
+        url = f"{self.config.api_base_url}{path}"
+        try:
+            headers = self._headers()
+        except TeslaReauthorizationRequiredError as exc:
+            self._log_call("GET", path, None, None, ok=False, error="missing_access_token")
+            raise self._reauthorization_error() from exc
+        except TeslaTokenManagerError as exc:
+            self._log_call("GET", path, None, None, ok=False, error="token_error")
+            raise TeslaApiError(f"Tesla token error: {exc}") from exc
+
+        started_at = time.perf_counter()
+        try:
+            response = self.session.request(
+                method="GET",
+                url=url,
+                headers=headers,
+                params=params,
+                timeout=self.config.request_timeout_seconds,
+                verify=self.config.request_verify_tls,
+            )
+        except requests.RequestException as exc:
+            elapsed = int((time.perf_counter() - started_at) * 1000)
+            self._log_call("GET", path, None, elapsed, ok=False, error="network_error")
+            raise TeslaApiError(f"Tesla API request failed: {exc}") from exc
+        elapsed = int((time.perf_counter() - started_at) * 1000)
+        return response, elapsed
+
+    @staticmethod
+    def _reauthorization_error() -> TeslaReauthorizationError:
+        return TeslaReauthorizationError("Tesla re-authorization required")
+
     def _request(
         self,
         method: str,
@@ -172,23 +250,19 @@ class TeslaFleetClient:
         if method.upper() != "GET":
             raise TeslaApiError("Read-only Tesla client allows only GET requests")
 
-        url = f"{self.config.api_base_url}{path}"
-        started_at = time.perf_counter()
         try:
-            response = self.session.request(
-                method="GET",
-                url=url,
-                headers=self._headers(),
-                params=params,
-                timeout=self.config.request_timeout_seconds,
-                verify=self.config.request_verify_tls,
+            self.token_manager.ensure_fresh_access_token(
+                leeway_seconds=self.config.token_refresh_leeway_seconds
             )
-        except requests.RequestException as exc:
-            elapsed = int((time.perf_counter() - started_at) * 1000)
-            self._log_call("GET", path, None, elapsed, ok=False, error=str(exc))
-            raise TeslaApiError(f"Tesla API request failed: {exc}") from exc
+        except TeslaReauthorizationRequiredError as exc:
+            self._log_call("GET", path, None, None, ok=False, error="refresh_required")
+            raise self._reauthorization_error() from exc
+        except TeslaTokenManagerError as exc:
+            self._log_call("GET", path, None, None, ok=False, error="refresh_error")
+            raise TeslaApiError(f"Tesla token refresh failed: {exc}") from exc
 
-        elapsed = int((time.perf_counter() - started_at) * 1000)
+        response, elapsed = self._send_get_request(path=path, params=params)
+
         if response.status_code == 401:
             self._log_call(
                 "GET",
@@ -198,7 +272,24 @@ class TeslaFleetClient:
                 ok=False,
                 error="401 unauthorized",
             )
-            raise TeslaUnauthorizedError("Tesla API unauthorized (401). Check access token.")
+            try:
+                self.token_manager.refresh_now()
+            except (TeslaReauthorizationRequiredError, TeslaTokenManagerError) as exc:
+                raise self._reauthorization_error() from exc
+
+            retry_response, retry_elapsed = self._send_get_request(path=path, params=params)
+            if retry_response.status_code == 401:
+                self._log_call(
+                    "GET",
+                    path,
+                    retry_response.status_code,
+                    retry_elapsed,
+                    ok=False,
+                    error="401 unauthorized after refresh",
+                )
+                raise self._reauthorization_error()
+            response = retry_response
+            elapsed = retry_elapsed
 
         if response.status_code >= 400:
             error_text = ""
@@ -277,6 +368,9 @@ class TeslaFleetClient:
         }
 
     def close(self) -> None:
+        close_tokens = getattr(self.token_manager, "close", None)
+        if callable(close_tokens):
+            close_tokens()
         close_method = getattr(self.session, "close", None)
         if callable(close_method):
             close_method()

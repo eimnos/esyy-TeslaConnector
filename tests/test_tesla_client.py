@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from src.tesla_client import TeslaApiConfig, TeslaFleetClient, TeslaUnauthorizedError
+from src.tesla_client import (
+    TeslaApiConfig,
+    TeslaFleetClient,
+    TeslaReauthorizationError,
+    TeslaUnauthorizedError,
+)
+from src.tesla_token_manager import TeslaReauthorizationRequiredError
 from src.tesla_readonly_status import build_status_snapshot, build_tesla_sample_row
 
 
@@ -26,9 +32,11 @@ class FakeSession:
         method: str,
         url: str,
         headers: dict,
-        params: dict | None,
-        timeout: float,
-        verify: bool,
+        params: dict | None = None,
+        timeout: float | None = None,
+        verify: bool | None = None,
+        data: dict | None = None,
+        **_kwargs: dict,
     ):
         self.calls.append(
             {
@@ -38,6 +46,7 @@ class FakeSession:
                 "params": params,
                 "timeout": timeout,
                 "verify": verify,
+                "data": data,
             }
         )
         if not self.responses:
@@ -60,15 +69,45 @@ def make_config() -> TeslaApiConfig:
         allow_wake_up=False,
         commands_enabled=False,
         request_timeout_seconds=10.0,
+        token_store_path="data/test_tesla_token_store.json",
     )
+
+
+class FakeTokenManager:
+    def __init__(self, *, access_token: str = "access-token-123") -> None:
+        self.access_token = access_token
+        self.refresh_calls = 0
+        self.ensure_calls = 0
+
+    def get_access_token(self) -> str:
+        return self.access_token
+
+    def ensure_fresh_access_token(self, *, leeway_seconds: int = 120) -> None:
+        self.ensure_calls += 1
+        return None
+
+    def refresh_now(self):  # noqa: ANN201 - test double
+        self.refresh_calls += 1
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class FakeFailingTokenManager(FakeTokenManager):
+    def refresh_now(self):  # noqa: ANN201 - test double
+        self.refresh_calls += 1
+        raise TeslaReauthorizationRequiredError("Tesla re-authorization required")
 
 
 def test_auth_header_bearer_is_sent(tmp_path: Path) -> None:
     session = FakeSession([FakeResponse(200, {"response": {"id_s": "123", "state": "online"}})])
+    token_manager = FakeTokenManager(access_token="access-token-123")
     client = TeslaFleetClient(
         config=make_config(),
         session=session,
         calls_log_path=tmp_path / "tesla_calls.csv",
+        token_manager=token_manager,
     )
 
     client.get_vehicle()
@@ -80,10 +119,12 @@ def test_auth_header_bearer_is_sent(tmp_path: Path) -> None:
 
 def test_401_raises_unauthorized(tmp_path: Path) -> None:
     session = FakeSession([FakeResponse(401, {"error": "invalid_token"})])
+    token_manager = FakeFailingTokenManager()
     client = TeslaFleetClient(
         config=make_config(),
         session=session,
         calls_log_path=tmp_path / "tesla_calls.csv",
+        token_manager=token_manager,
     )
 
     with pytest.raises(TeslaUnauthorizedError):
@@ -92,10 +133,12 @@ def test_401_raises_unauthorized(tmp_path: Path) -> None:
 
 def test_asleep_vehicle_skips_vehicle_data_and_no_wakeup(tmp_path: Path) -> None:
     session = FakeSession([FakeResponse(200, {"response": {"id_s": "123", "state": "asleep"}})])
+    token_manager = FakeTokenManager()
     client = TeslaFleetClient(
         config=make_config(),
         session=session,
         calls_log_path=tmp_path / "tesla_calls.csv",
+        token_manager=token_manager,
     )
 
     status = client.get_readonly_status()
@@ -105,6 +148,48 @@ def test_asleep_vehicle_skips_vehicle_data_and_no_wakeup(tmp_path: Path) -> None
     assert len(session.calls) == 1
     assert "/vehicle_data" not in session.calls[0]["url"]
     assert "wake" not in session.calls[0]["url"].lower()
+
+
+def test_401_triggers_single_refresh_and_retry(tmp_path: Path) -> None:
+    session = FakeSession(
+        [
+            FakeResponse(401, {"error": "invalid_token"}),
+            FakeResponse(200, {"response": {"id_s": "123", "state": "online"}}),
+        ]
+    )
+    token_manager = FakeTokenManager()
+    client = TeslaFleetClient(
+        config=make_config(),
+        session=session,
+        calls_log_path=tmp_path / "tesla_calls.csv",
+        token_manager=token_manager,
+    )
+
+    vehicle = client.get_vehicle()
+
+    assert vehicle["state"] == "online"
+    assert token_manager.refresh_calls == 1
+    assert len(session.calls) == 2
+
+
+def test_401_after_refresh_raises_reauthorization(tmp_path: Path) -> None:
+    session = FakeSession(
+        [
+            FakeResponse(401, {"error": "invalid_token"}),
+            FakeResponse(401, {"error": "invalid_token"}),
+        ]
+    )
+    token_manager = FakeTokenManager()
+    client = TeslaFleetClient(
+        config=make_config(),
+        session=session,
+        calls_log_path=tmp_path / "tesla_calls.csv",
+        token_manager=token_manager,
+    )
+
+    with pytest.raises(TeslaReauthorizationError, match="Tesla re-authorization required"):
+        client.get_vehicle()
+    assert token_manager.refresh_calls == 1
 
 
 def test_build_status_snapshot_parses_charge_state() -> None:
@@ -167,3 +252,21 @@ def test_build_tesla_sample_row_maps_required_columns() -> None:
     assert row["charge_current_request_max"] == 16.0
     assert row["energy_added_kwh"] == 2.2
     assert row["source"] == "tesla_sync_readonly"
+
+
+def test_call_log_does_not_include_bearer_token(tmp_path: Path) -> None:
+    token_value = "access-token-123"
+    session = FakeSession([FakeResponse(200, {"response": {"id_s": "123", "state": "online"}})])
+    token_manager = FakeTokenManager(access_token=token_value)
+    log_path = tmp_path / "tesla_calls.csv"
+    client = TeslaFleetClient(
+        config=make_config(),
+        session=session,
+        calls_log_path=log_path,
+        token_manager=token_manager,
+    )
+
+    client.get_vehicle()
+    log_content = log_path.read_text(encoding="utf-8")
+
+    assert token_value not in log_content

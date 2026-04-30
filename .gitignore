@@ -17,3 +17,6 @@ data/tesla_proxy_stderr.log
 tools/tesla-command-proxy/bin/
 tools/tesla-command-proxy/vehicle-command/
 tools/tesla-command-proxy/config/
+data/tesla_token_store.json
+data/*token*
+*.token
